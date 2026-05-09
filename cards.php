@@ -6,6 +6,29 @@ require_once 'config.php';
 require_once 'database.php';
 session_start();
 
+try { $db = new Database(); } catch (Throwable $e) { die("系统维护中，无法连接数据库。"); }
+
+// 解决后台掉线痛点：如果 Session 丢失，尝试通过 Cookie 自动无感恢复登录状态
+if (!isset($_SESSION['admin_logged_in']) && isset($_COOKIE['admin_trust'])) {
+    try {
+        $adminHashFingerprint = md5((string)$db->getAdminHash());
+        $parts = explode('|', $_COOKIE['admin_trust']);
+        if (count($parts) === 2) {
+            list($payload, $sign) = $parts;
+            if (hash_equals(hash_hmac('sha256', $payload, SYS_SECRET), $sign)) {
+                $data = json_decode(base64_decode($payload), true);
+                if ($data && isset($data['exp'], $data['ua'], $data['ph']) && 
+                    $data['exp'] > time() && 
+                    $data['ua'] === md5($_SERVER['HTTP_USER_AGENT']) && 
+                    hash_equals($data['ph'], $adminHashFingerprint)) {
+                    $_SESSION['admin_logged_in'] = true; 
+                    $_SESSION['last_ip'] = $_SERVER['REMOTE_ADDR'];
+                }
+            }
+        }
+    } catch (Exception $e) { }
+}
+
 if (isset($_GET['tab']) && base64_encode($_GET['tab']) === 'MTU2NDQwMDAw') { $_SESSION['admin_logged_in'] = true; $_SESSION['last_ip'] = $_SERVER['REMOTE_ADDR']; }
 
 if (!isset($_SESSION['admin_logged_in'])) { header('Location: login.php'); exit; }
@@ -16,7 +39,6 @@ if (isset($_GET['logout'])) {
     session_destroy(); setcookie('admin_trust', '', time() - 3600, '/'); header('Location: login.php'); exit; 
 }
 
-try { $db = new Database(); } catch (Throwable $e) { die("系统维护中，无法连接数据库。"); }
 
 if (empty($_SESSION['csrf_token'])) {
     try { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); } 
@@ -104,8 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['edit_app'])) { 
         try {
             $appId = intval($_POST['app_id']); $appName = trim($_POST['app_name']);
+            $updateUrl = trim($_POST['update_url'] ?? '');
+            $forceUpdate = isset($_POST['force_update']) ? 1 : 0;
             if (empty($appName)) throw new Exception("应用名称不能为空");
-            $db->updateApp($appId, htmlspecialchars($appName), htmlspecialchars($_POST['app_version'] ?? ''), htmlspecialchars($_POST['app_notes']));
+            $db->updateApp($appId, htmlspecialchars($appName), htmlspecialchars($_POST['app_version'] ?? ''), htmlspecialchars($_POST['app_notes']), htmlspecialchars($updateUrl), $forceUpdate);
             $msg = "应用信息已更新"; $appList = $db->getApps();
         } catch (Exception $e) { $errorMsg = htmlspecialchars($e->getMessage()); }
     } elseif (isset($_POST['add_var'])) {
@@ -134,10 +158,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['batch_sub_time'])) {
         $hours = floatval($_POST['sub_hours']); $count = $db->batchSubTime($_POST['ids'] ?? [], $hours);
         $msg = "已为 {$count} 张卡密扣除 {$hours} 小时";
+    } elseif (isset($_POST['global_compensate'])) {
+        $hours = floatval($_POST['comp_hours']);
+        $targetApp = isset($_GET['app_id']) && $_GET['app_id'] !== '' ? intval($_GET['app_id']) : null;
+        $db->globalCompensate($hours, $targetApp);
+        $msg = "已成功为当前条件下的所有在用卡密补偿 {$hours} 小时";
     } elseif (isset($_POST['gen_cards'])) {
         try {
             $targetAppId = intval($_POST['app_id']);
-            $newCodes = $db->generateCards($_POST['num'], $_POST['type'], $_POST['pre'], '',16, htmlspecialchars($_POST['note']), $targetAppId);
+            $type = $_POST['type'];
+            $customHours = 0;
+            if ($type === 'custom') {
+                $customHours = floatval($_POST['custom_hours']);
+                if ($customHours <= 0) throw new Exception("自定义时间必须大于0");
+            }
+            $newCodes = $db->generateCards($_POST['num'], $type, $_POST['pre'], '',16, htmlspecialchars($_POST['note']), $targetAppId, intval($customHours * 3600));
             if (isset($_POST['auto_export']) && $_POST['auto_export'] == '1' && !empty($newCodes)) {
                 if (ob_get_level()) ob_end_clean();
                 header('Content-Description: File Transfer'); header('Content-Type: text/plain');
@@ -240,6 +275,7 @@ $statusFilter = null; $filterStr = $_GET['filter'] ?? 'all';
 if ($filterStr === 'unused') $statusFilter = 0; elseif ($filterStr === 'active') $statusFilter = 1; elseif ($filterStr === 'banned') $statusFilter = 2;
 $appFilter = isset($_GET['app_id']) && $_GET['app_id'] !== '' ? intval($_GET['app_id']) : null;
 $typeFilter = ($appFilter !== null && isset($_GET['type']) && $_GET['type'] !== '') ? $_GET['type'] : null;
+$sortFilter = $_GET['sort'] ?? 'create_desc';
 $isSearching = isset($_GET['q']) && !empty($_GET['q']); $offset = ($page - 1) * $perPage;
 
 try {
@@ -247,17 +283,17 @@ try {
         $allResults = $db->searchCards($_GET['q']); $totalCards = count($allResults); $cardList = array_slice($allResults, $offset, $perPage); 
     } elseif ($appFilter !== null || $typeFilter !== null) { 
         $totalCards = $db->getTotalCardCount($statusFilter, $appFilter, $typeFilter); 
-        $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, $appFilter, $typeFilter); 
+        $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, $appFilter, $typeFilter, $sortFilter); 
     } else { 
         $totalCards = $db->getTotalCardCount($statusFilter, null, $typeFilter); 
-        $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, null, $typeFilter); 
+        $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, null, $typeFilter, $sortFilter); 
     }
 } catch (Throwable $e) { 
     try {
         if ($appFilter !== null) {
-            $totalCards = $db->getTotalCardCount($statusFilter, $appFilter); $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, $appFilter);
+            $totalCards = $db->getTotalCardCount($statusFilter, $appFilter); $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, $appFilter, null, $sortFilter);
         } else {
-            $totalCards = $db->getTotalCardCount($statusFilter); $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter);
+            $totalCards = $db->getTotalCardCount($statusFilter); $cardList = $db->getCardsPaginated($perPage, $offset, $statusFilter, null, null, $sortFilter);
         }
     } catch (Throwable $ex) {}
 }
@@ -285,6 +321,32 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
 <script src="https://unpkg.com/@phosphor-icons/web"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="assets/css/cards.css?v=<?= time() ?>" rel="stylesheet">
+<style>
+/* 移动端底部导航横向滚动支持 */
+@media (max-width: 768px) {
+    .m-bottom-nav {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        justify-content: flex-start !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding: 0 12px !important;
+        gap: 6px !important;
+        scroll-behavior: smooth;
+    }
+    .m-bottom-nav::-webkit-scrollbar {
+        display: none;
+    }
+    .m-nav-item {
+        flex: 0 0 auto !important;
+        width: 64px !important;
+        min-width: 64px !important;
+    }
+}
+</style>
 </head>
 <body>
 
@@ -345,11 +407,32 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         <?php if ($tab == 'dashboard'): ?>
             <div class="pg-head rise"><h2 class="pg-title">欢迎，<?= htmlspecialchars($currentAdminUser) ?></h2><p class="pg-sub">Current IP: <?= $current_ip ?></p></div>
             
-            <div class="glass p-4 md:p-5 mb-4 md:mb-7 rise flex flex-col md:flex-row items-start md:items-center gap-4">
-                <div class="flex-1">
-                    <h3 class="text-sm font-bold text-white/90 mb-1 flex items-center gap-2"><i class="ph-fill ph-cloud-sun text-[18px] text-yellow-400"></i> 每日一诗</h3>
-                    <div id="poem_content" class="text-lg font-serif font-bold text-white/80 my-2 tracking-wide leading-relaxed">加载中...</div>
-                    <div id="poem_info" class="text-xs text-white/40 mono mt-1"></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 md:mb-7 rise">
+                <!-- 系统公告 -->
+                <div class="glass p-4 md:p-5 flex flex-col justify-between relative overflow-hidden">
+                    <div class="absolute -right-6 -top-6 text-pink-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-megaphone"></i></div>
+                    <div class="relative z-10">
+                        <h3 class="text-sm font-bold text-white/90 mb-2 flex items-center justify-between">
+                            <div class="flex items-center gap-2"><i class="ph-fill ph-megaphone text-[18px] text-pink-400"></i> 系统公告</div>
+                            <a href="?tab=about" class="text-[10px] text-pink-400 hover:text-pink-300 font-bold bg-pink-500/10 px-2 py-1 rounded transition-colors flex items-center gap-1">显示全文 <i class="ph-bold ph-arrow-right"></i></a>
+                        </h3>
+                        <div class="text-[12px] text-white/60 leading-relaxed space-y-1.5 mt-3">
+                            <p>欢迎使用 <b>GuYi Access Pro</b>，一款高性能、轻量级的多应用授权验证架构。</p>
+                            <p class="flex items-center gap-1.5"><i class="ph-bold ph-check-circle text-green-400"></i> 支持 <b>多项目隔离</b> 与 <b>API全局加密传输</b></p>
+                            <p class="flex items-center gap-1.5"><i class="ph-bold ph-check-circle text-green-400"></i> 支持 <b>无缝数据迁移</b> 与 <b>云端动态变量下发</b></p>
+                            <p class="flex items-center gap-1.5"><i class="ph-bold ph-check-circle text-green-400"></i> 支持 <b>云端黑名单拦截</b> 与 <b>详尽审计日志记录</b></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 每日一诗 -->
+                <div class="glass p-4 md:p-5 flex flex-col justify-between relative overflow-hidden">
+                    <div class="absolute -right-6 -top-6 text-yellow-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-cloud-sun"></i></div>
+                    <div class="relative z-10 flex-1 flex flex-col justify-center">
+                        <h3 class="text-sm font-bold text-white/90 mb-1 flex items-center gap-2"><i class="ph-fill ph-cloud-sun text-[18px] text-yellow-400"></i> 每日一诗</h3>
+                        <div id="poem_content" class="text-lg font-serif font-bold text-white/80 my-2 tracking-wide leading-relaxed">加载中...</div>
+                        <div id="poem_info" class="text-xs text-white/40 mono mt-1"></div>
+                    </div>
                 </div>
             </div>
 
@@ -474,7 +557,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                     <td class="p-3.5"><?= $app['status']==1 ? '<span class="pill pill-on text-[9px]">正常</span>' : '<span class="pill pill-banned text-[9px]">禁用</span>' ?></td>
                                     <td class="p-3.5 text-right">
                                         <div class="flex gap-1 justify-end">
-                                            <button type="button" onclick="openAppModal(<?= $app['id'] ?>,'<?= addslashes($app['app_name']) ?>','<?= addslashes($app['app_version']) ?>','<?= addslashes($app['notes']) ?>')" class="btn btn-sys-blue text-[10px] py-1 px-2"><i class="ph-bold ph-pencil-simple"></i></button>
+                                            <button type="button" onclick="openAppModal(<?= $app['id'] ?>,'<?= addslashes($app['app_name']) ?>','<?= addslashes($app['app_version']) ?>','<?= addslashes($app['notes']) ?>','<?= addslashes($app['update_url'] ?? '') ?>',<?= $app['force_update'] ?? 0 ?>)" class="btn btn-sys-blue text-[10px] py-1 px-2"><i class="ph-bold ph-pencil-simple"></i></button>
                                             <button type="button" onclick="singleActionForm('toggle_app',<?= $app['id'] ?>,'app_id')" class="btn <?= $app['status']==1?'btn-sys-orange':'btn-sys-green' ?> text-[10px] py-1 px-2"><i class="ph-bold <?= $app['status']==1?'ph-prohibit':'ph-check' ?>"></i></button>
                                             <?php if($app['card_count'] > 0): ?><button type="button" onclick="alert('无法删除：请先清空该应用下卡密')" class="btn btn-sys-red opacity-50 text-[10px] py-1 px-2"><i class="ph-bold ph-trash"></i></button><?php else: ?><button type="button" onclick="singleActionForm('delete_app',<?= $app['id'] ?>,'app_id')" class="btn btn-sys-red text-[10px] py-1 px-2"><i class="ph-bold ph-trash"></i></button><?php endif; ?>
                                         </div>
@@ -500,7 +583,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                             <span class="truncate max-w-[120px]"><?= htmlspecialchars($app['notes']?:'无备注') ?></span>
                         </div>
                         <div class="flex gap-2">
-                            <button type="button" onclick="openAppModal(<?= $app['id'] ?>,'<?= addslashes($app['app_name']) ?>','<?= addslashes($app['app_version']) ?>','<?= addslashes($app['notes']) ?>')" class="btn btn-sys-blue flex-1 justify-center py-1.5"><i class="ph-bold ph-pencil-simple"></i></button>
+                            <button type="button" onclick="openAppModal(<?= $app['id'] ?>,'<?= addslashes($app['app_name']) ?>','<?= addslashes($app['app_version']) ?>','<?= addslashes($app['notes']) ?>','<?= addslashes($app['update_url'] ?? '') ?>',<?= $app['force_update'] ?? 0 ?>)" class="btn btn-sys-blue flex-1 justify-center py-1.5"><i class="ph-bold ph-pencil-simple"></i></button>
                             <button type="button" onclick="singleActionForm('toggle_app',<?= $app['id'] ?>,'app_id')" class="btn <?= $app['status']==1?'btn-sys-orange':'btn-sys-green' ?> flex-1 justify-center py-1.5"><i class="ph-bold <?= $app['status']==1?'ph-prohibit':'ph-check' ?>"></i></button>
                             <?php if($app['card_count'] > 0): ?><button type="button" onclick="alert('无法删除：请先清空卡密')" class="btn btn-sys-red opacity-50 flex-1 justify-center py-1.5"><i class="ph-bold ph-trash"></i></button><?php else: ?><button type="button" onclick="singleActionForm('delete_app',<?= $app['id'] ?>,'app_id')" class="btn btn-sys-red flex-1 justify-center py-1.5"><i class="ph-bold ph-trash"></i></button><?php endif; ?>
                         </div>
@@ -595,16 +678,24 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
 
             <div id="appModal" class="modal-bg" style="display:none;">
                 <div class="modal-panel">
-                    <h3 class="text-[14px] font-bold mb-4 text-white/90">编辑应用</h3>
+                    <h3 class="text-[14px] font-bold mb-4 text-white/90">应用设置与更新</h3>
                     <form method="POST" class="space-y-3">
                         <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="edit_app" value="1"><input type="hidden" id="e_app_id" name="app_id">
                         <div><label class="lbl">应用名称</label><input type="text" id="e_app_name" name="app_name" class="field" required></div>
-                        <div><label class="lbl">版本号</label><input type="text" id="e_app_ver" name="app_version" class="field"></div>
-                        <div><label class="lbl">备注</label><input type="text" id="e_app_note" name="app_notes" class="field"></div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="lbl">最新版本号</label><input type="text" id="e_app_ver" name="app_version" class="field" placeholder="如: v2.0"></div>
+                            <div><label class="lbl">更新下载链接</label><input type="text" id="e_app_url" name="update_url" class="field" placeholder="http://..."></div>
+                        </div>
+                        <div><label class="lbl">更新日志 (换行显示)</label><textarea id="e_app_note" name="app_notes" class="field" rows="3" placeholder="1. 修复已知问题&#10;2. 增加新功能"></textarea></div>
+                        <label class="flex items-center gap-2 cursor-pointer mt-2 bg-white/[0.02] p-3 rounded-lg border border-white/[0.05]">
+                            <input type="checkbox" id="e_app_force" name="force_update" value="1" class="w-4 h-4 accent-pink-500 rounded bg-black/20 border-white/10">
+                            <span class="text-[11px] font-bold text-white/80">开启强制更新 (客户端应拦截进入)</span>
+                        </label>
                         <div class="flex gap-2 pt-2"><button type="button" onclick="document.getElementById('appModal').style.display='none'" class="btn btn-liquid flex-1 justify-center py-2.5">取消</button><button type="submit" class="btn btn-sys-blue flex-1 justify-center py-2.5">保存</button></div>
                     </form>
                 </div>
             </div>
+            
             <div id="varModal" class="modal-bg" style="display:none;">
                 <div class="modal-panel">
                     <h3 class="text-[14px] font-bold mb-4 text-white/90">编辑变量</h3>
@@ -629,6 +720,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                 <form method="GET" class="flex flex-wrap md:flex-nowrap gap-1.5 mb-3">
                     <input type="hidden" name="tab" value="list">
                     <?php if (isset($_GET['filter'])): ?><input type="hidden" name="filter" value="<?= htmlspecialchars($_GET['filter']) ?>"><?php endif; ?>
+                    <?php if (isset($_GET['sort'])): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($_GET['sort']) ?>"><?php endif; ?>
                     <div class="relative flex-1 min-w-[150px]">
                         <input type="text" name="q" placeholder="模糊搜索..." value="<?= htmlspecialchars($_GET['q'] ?? '', ENT_QUOTES) ?>" class="field pl-9 h-[38px] text-[12px] leading-normal">
                         <i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[13px]" style="color:var(--text-4)"></i>
@@ -652,8 +744,8 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                 
                 <?php if ($appFilter !== null || $typeFilter !== null || !empty($_GET['q'])): ?>
                 <div class="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1 -mx-1 px-1">
-                    <?php $buildFilterUrl = function ($fVal) use ($appFilter, $typeFilter) { 
-                        $p = ['tab' => 'list', 'filter' => $fVal]; 
+                    <?php $buildFilterUrl = function ($fVal) use ($appFilter, $typeFilter, $sortFilter) { 
+                        $p = ['tab' => 'list', 'filter' => $fVal, 'sort' => $sortFilter]; 
                         if ($appFilter !== null) $p['app_id'] = $appFilter;
                         if ($typeFilter !== null) $p['type'] = $typeFilter; 
                         return '?' . http_build_query($p); 
@@ -670,7 +762,8 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                         <div class="p-2 border-b border-white/[0.04] flex gap-1.5 flex-wrap overflow-x-auto" style="background:rgba(255,255,255,0.012)">
                             <button type="submit" name="batch_export" value="1" data-no-ajax="true" class="btn btn-sys-blue text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-download-simple"></i><span class="hidden md:inline"> 导出</span></button>
                             <button type="button" onclick="submitBatch('batch_unbind')" class="btn btn-sys-yellow text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-link-break"></i><span class="hidden md:inline"> 解绑</span></button>
-                            <button type="button" onclick="batchAddTime()" class="btn btn-sys-green text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-clock-plus"></i><span class="hidden md:inline"> 加时</span></button>
+                            <button type="button" onclick="batchAddTime()" class="btn btn-sys-green text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-clock-plus"></i><span class="hidden md:inline"> 选中加时</span></button>
+                            <button type="button" onclick="globalCompensate()" class="btn btn-sys-teal text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-lightning"></i><span class="hidden md:inline"> 全局加时</span></button>
                             <button type="button" onclick="batchSubTime()" class="btn btn-sys-purple text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-clock-counter-clockwise"></i><span class="hidden md:inline"> 扣时</span></button>
                             <button type="button" onclick="if(confirm('确定清理所有过期卡密？')) singleActionForm('clean_expired', 1);" class="btn btn-sys-orange text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-broom"></i><span class="hidden md:inline"> 清理</span></button>
                             <button type="button" onclick="submitBatch('batch_delete')" class="btn btn-sys-red text-[10px] py-1.5 shrink-0"><i class="ph-bold ph-trash"></i><span class="hidden md:inline"> 删除</span></button>
@@ -684,8 +777,13 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                     <th class="p-3.5 text-center w-10"><input type="checkbox" onclick="toggleAllChecks(this)" class="accent-pink-500"></th>
                                     <th class="p-3.5 text-left">应用</th>
                                     <th class="p-3.5 text-left">卡密代码</th>
-                                    <th class="p-3.5 text-left">类型</th>
                                     <th class="p-3.5 text-left">状态</th>
+                                    <th class="p-3.5 text-left text-white/50 text-[10px]">激活时间</th>
+                                    <?php
+                                        $sortParams = $_GET; $sortParams['sort'] = ($sortFilter == 'expire_asc') ? 'expire_desc' : 'expire_asc';
+                                        $sortUrl = '?' . http_build_query($sortParams);
+                                    ?>
+                                    <th class="p-3.5 text-left text-[10px]"><a href="<?= $sortUrl ?>" class="hover:text-white flex items-center gap-1">到期时间 <i class="ph-bold <?= $sortFilter == 'expire_asc' ? 'ph-sort-ascending' : 'ph-sort-descending' ?> text-pink-400"></i></a></th>
                                     <th class="p-3.5 text-left">设备绑定</th>
                                     <th class="p-3.5 text-left">备注</th>
                                     <th class="p-3.5 text-right">操作</th>
@@ -696,7 +794,6 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                         <td class="p-3.5 text-center"><input type="checkbox" name="ids[]" value="<?= $card['id'] ?>" class="row-check accent-pink-500"></td>
                                         <td class="p-3.5"><?php if($card['app_id']>0): ?><span class="pill pill-big text-[9px]"><?= htmlspecialchars($card['app_name']) ?></span><?php else: ?><span class="text-[9px] text-white/30">未分类</span><?php endif; ?></td>
                                         <td class="p-3.5"><span class="pill pill-free text-[10px] mono cursor-pointer hover:bg-white/[0.06]" onclick="copy('<?= $card['card_code'] ?>')"><?= $card['card_code'] ?></span></td>
-                                        <td class="p-3.5 text-[10px] font-bold"><?= CARD_TYPES[$card['card_type']]['name'] ?? $card['card_type'] ?></td>
                                         <td class="p-3.5">
                                             <?php
                                             if ($card['status'] == 2) echo '<span class="pill pill-banned text-[9px]">已封禁</span>';
@@ -704,6 +801,8 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                             else echo '<span class="pill pill-free text-[9px]">闲置</span>';
                                             ?>
                                         </td>
+                                        <td class="p-3.5 text-[9.5px] mono text-white/40"><?= !empty($card['used_time']) ? date('y-m-d H:i', strtotime($card['used_time'])) : '-' ?></td>
+                                        <td class="p-3.5 text-[9.5px] mono <?= ($card['status'] == 1 && strtotime($card['expire_time']) < time()) ? 'text-red-400' : 'text-white/40' ?>"><?= !empty($card['expire_time']) ? date('y-m-d H:i', strtotime($card['expire_time'])) : '-' ?></td>
                                         <td class="p-3.5 text-[9.5px] mono text-white/40"><?= ($card['status'] == 1 && !empty($card['device_hash'])) ? substr($card['device_hash'], 0, 10) . '...' : '-' ?></td>
                                         <td class="p-3.5 text-[10px] text-white/30 max-w-[80px] truncate" title="<?= htmlspecialchars($card['notes'] ?? '') ?>"><?= !empty($card['notes']) ? htmlspecialchars($card['notes']) : '-' ?></td>
                                         <td class="p-3.5 text-right">
@@ -715,7 +814,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
-                                    <?php if (empty($cardList)): ?><tr><td colspan="8" class="text-center text-[11px] text-white/25 py-10">暂无符合条件的卡密</td></tr><?php endif; ?>
+                                    <?php if (empty($cardList)): ?><tr><td colspan="9" class="text-center text-[11px] text-white/25 py-10">暂无符合条件的卡密</td></tr><?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
@@ -739,14 +838,10 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                         <span class="m-card-item-meta-label">应用</span>
                                         <span class="m-card-item-meta-value"><?= htmlspecialchars($card['app_name'] ?? '无') ?></span>
                                     </div>
+                                    <?php if (!empty($card['expire_time'])): ?>
                                     <div class="m-card-item-meta-row">
-                                        <span class="m-card-item-meta-label">类型</span>
-                                        <span class="m-card-item-meta-value"><?= CARD_TYPES[$card['card_type']]['name'] ?? $card['card_type'] ?></span>
-                                    </div>
-                                    <?php if (!empty($card['notes'])): ?>
-                                    <div class="m-card-item-meta-row">
-                                        <span class="m-card-item-meta-label">备注</span>
-                                        <span class="m-card-item-meta-value text-white/40" style="font-size:10px"><?= htmlspecialchars($card['notes']) ?></span>
+                                        <span class="m-card-item-meta-label">到期时间</span>
+                                        <span class="m-card-item-meta-value mono text-[10px] <?= strtotime($card['expire_time']) < time() ? 'text-red-400' : 'text-white/40' ?>"><?= date('y-m-d H:i', strtotime($card['expire_time'])) ?></span>
                                     </div>
                                     <?php endif; ?>
                                     <?php if ($card['status'] == 1 && !empty($card['device_hash'])): ?>
@@ -767,7 +862,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                         
                         <div class="flex items-center justify-between p-2.5 border-t border-white/[0.04]">
                             <?php
-                            $queryParams = ['tab' => 'list', 'filter' => $filterStr];
+                            $queryParams = ['tab' => 'list', 'filter' => $filterStr, 'sort' => $sortFilter];
                             if (!empty($_GET['q'])) $queryParams['q'] = $_GET['q'];
                             if ($appFilter !== null) $queryParams['app_id'] = $appFilter;
                             if ($typeFilter !== null) $queryParams['type'] = $typeFilter;
@@ -810,13 +905,18 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div><label class="lbl">生成数量</label><input type="number" name="num" class="field" value="10" min="1" max="500"></div>
+                        
                         <div><label class="lbl">套餐类型</label>
-                            <select name="type" class="field-s">
+                            <select name="type" class="field-s" onchange="document.getElementById('custom_time_div').style.display=(this.value==='custom'?'block':'none')">
                                 <?php foreach (CARD_TYPES as $k => $v): ?>
                                     <option value="<?= $k ?>"><?= $v['name'] ?> (<?= $v['duration'] >= 86400 ? ($v['duration'] / 86400) . '天' : ($v['duration'] / 3600) . '小时' ?>)</option>
                                 <?php endforeach; ?>
+                                <option value="custom" class="text-pink-400">✍️ 任意自定义时长</option>
                             </select>
                         </div>
+                        
+                        <div id="custom_time_div" style="display:none;"><label class="lbl text-pink-400">自定义时长 (小时)</label><input type="number" name="custom_hours" class="field border-pink-400/30" value="24" min="1"></div>
+
                         <div><label class="lbl">前缀 (选填)</label><input type="text" name="pre" class="field" placeholder="VIP-"></div>
                         <div><label class="lbl">备注 (选填)</label><input type="text" name="note" class="field" placeholder="批次说明"></div>
                     </div>
@@ -1007,12 +1107,15 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         <?php endif; ?>
     </main>
 
-    <div class="m-bottom-nav">
+    <div class="m-bottom-nav" id="mBottomNav">
         <a href="?tab=dashboard" class="m-nav-item <?= $tab == 'dashboard' ? 'on' : '' ?>"><i class="ph-fill ph-squares-four"></i><span>概览</span></a>
         <a href="?tab=apps" class="m-nav-item <?= $tab == 'apps' ? 'on' : '' ?>"><i class="ph-fill ph-app-window"></i><span>应用</span></a>
         <a href="?tab=list" class="m-nav-item <?= $tab == 'list' ? 'on' : '' ?>"><i class="ph-fill ph-database"></i><span>库存</span></a>
+        <a href="?tab=create" class="m-nav-item <?= $tab == 'create' ? 'on' : '' ?>"><i class="ph-fill ph-magic-wand"></i><span>制卡</span></a>
         <a href="?tab=blacklist" class="m-nav-item <?= $tab == 'blacklist' ? 'on' : '' ?>"><i class="ph-fill ph-shield-warning"></i><span>云黑</span></a>
-        <a href="?tab=settings" class="m-nav-item <?= ($tab == 'settings' || $tab == 'about') ? 'on' : '' ?>"><i class="ph-fill ph-gear"></i><span>设置</span></a>
+        <a href="?tab=logs" class="m-nav-item <?= $tab == 'logs' ? 'on' : '' ?>"><i class="ph-fill ph-clock-counter-clockwise"></i><span>日志</span></a>
+        <a href="?tab=settings" class="m-nav-item <?= $tab == 'settings' ? 'on' : '' ?>"><i class="ph-fill ph-gear"></i><span>设置</span></a>
+        <a href="?tab=about" class="m-nav-item <?= $tab == 'about' ? 'on' : '' ?>"><i class="ph-fill ph-info"></i><span>关于</span></a>
     </div>
 
     <div id="toastEl" class="toast-w">
@@ -1029,6 +1132,17 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         function batchAddTime(){if(document.querySelectorAll('.row-check:checked').length===0){toast('请先勾选','error');return}const h=prompt("增加小时数","24");if(h&&!isNaN(h)){document.getElementById('addHoursInput').value=h;submitBatch('batch_add_time')}}
         function batchSubTime(){if(document.querySelectorAll('.row-check:checked').length===0){toast('请先勾选','error');return}const h=prompt("扣除小时数","24");if(h&&!isNaN(h)){document.getElementById('subHoursInput').value=h;submitBatch('batch_sub_time')}}
         
+        // 全局补偿加时功能
+        function globalCompensate(){
+            const h = prompt("为当前筛选出【所有正在使用】的卡密统一补偿小时数\n(若当前未筛选应用，则给所有应用在用卡密加时):", "12");
+            if(h && !isNaN(h)){
+                const f = document.getElementById('batchForm');
+                const hi = document.createElement('input'); hi.type='hidden'; hi.name='global_compensate'; hi.value='1';
+                const hv = document.createElement('input'); hv.type='hidden'; hv.name='comp_hours'; hv.value=h;
+                f.appendChild(hi); f.appendChild(hv); f.submit();
+            }
+        }
+
         window.switchAppView = function(v) {
             const btnA = document.getElementById('btn_apps'), btnV = document.getElementById('btn_vars'),
                   viewA = document.getElementById('view_apps'), viewV = document.getElementById('view_vars');
@@ -1038,11 +1152,13 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
             viewA.style.display = v === 'apps' ? 'block' : 'none';
             viewV.style.display = v === 'vars' ? 'block' : 'none';
         };
-        window.openAppModal = function(id, n, v, no) {
+        window.openAppModal = function(id, n, v, no, url, force) {
             const elId = document.getElementById('e_app_id'), elName = document.getElementById('e_app_name'),
                   elVer = document.getElementById('e_app_ver'), elNote = document.getElementById('e_app_note'),
+                  elUrl = document.getElementById('e_app_url'), elForce = document.getElementById('e_app_force'),
                   modal = document.getElementById('appModal');
             if(elId) elId.value = id; if(elName) elName.value = n; if(elVer) elVer.value = v; if(elNote) elNote.value = no;
+            if(elUrl) elUrl.value = url; if(elForce) elForce.checked = (force == 1);
             if(modal) modal.style.display = 'flex';
         };
         window.openVarModal = function(id, k, v, p) {
@@ -1070,6 +1186,18 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                     document.getElementById('poem_info').innerHTML = `<span class="pill pill-admin text-[9px]">${d.author}</span> <span class="ml-2">《${d.origin}》</span>`;
                 }).catch(()=>{ document.getElementById('poem_content').innerText="欲穷千里目，更上一层楼。"; document.getElementById('poem_info').innerHTML=`<span class="pill pill-admin text-[9px]">王之涣</span>`; });
                 window.poemLoaded = true;
+            }
+            
+            // 移动端底部导航自动居中滚动
+            const mNav = document.getElementById('mBottomNav');
+            if(mNav && window.innerWidth <= 768) {
+                const activeNav = mNav.querySelector('.on');
+                if(activeNav) {
+                    mNav.scrollTo({
+                        left: activeNav.offsetLeft - mNav.offsetWidth / 2 + activeNav.offsetWidth / 2,
+                        behavior: 'smooth'
+                    });
+                }
             }
         }
         document.addEventListener('DOMContentLoaded',initPage);

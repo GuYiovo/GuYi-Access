@@ -1,5 +1,9 @@
 <?php
 // config.php
+// 增加生命周期至3天（259200秒），彻底解决后台操作缓慢导致掉线的痛点
+ini_set('session.gc_maxlifetime', 259200);
+session_set_cookie_params(259200);
+
 if (!defined('DB_INSTALLED_CHECK')) {
     // 如果未安装，跳转安装
     $current_script = basename($_SERVER['SCRIPT_NAME']);

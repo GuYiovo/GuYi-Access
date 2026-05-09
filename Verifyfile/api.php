@@ -64,24 +64,64 @@ if (is_array($data)) {
     $data = array_merge($_GET, $_POST);
 }
 
-$card_code = !empty($data['card_code']) ? trim($data['card_code']) : (isset($data['card']) ? trim($data['card']) : '');
-$app_key   = isset($data['app_key']) ? trim($data['app_key']) : '';
-$device    = !empty($data['device_hash']) ? trim($data['device_hash']) : (isset($data['device']) ? trim($data['device']) : '');
+$card_code   = !empty($data['card_code']) ? trim($data['card_code']) : (isset($data['card']) ? trim($data['card']) : '');
+$app_key     = isset($data['app_key']) ? trim($data['app_key']) : '';
+$device      = !empty($data['device_hash']) ? trim($data['device_hash']) : (isset($data['device']) ? trim($data['device']) : '');
+$action      = isset($data['action']) ? $data['action'] : 'verify';
+$custom_data = isset($data['custom_data']) ? trim($data['custom_data']) : null;
 
 try {
     if (!$db) {
         throw new Exception("数据库连接失败");
     }
 
-    if (empty($card_code) && !empty($app_key)) {
+    // 1. 无卡密上报全局设备/IP黑名单 (反破解/调试触发)
+    if ($action === 'ban_machine' || $action === 'blacklist') {
+        $reason = isset($data['reason']) ? trim($data['reason']) : '触发客户端安全防御策略';
+        if (!empty($device)) {
+            try {
+                $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('device', ?, ?)")->execute([$device, $reason]);
+                $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('ip', ?, ?)")->execute([$rate_ip, $reason]);
+                output_json(200, '设备与所在IP已被系统成功拉黑', null);
+            } catch(Exception $e) {
+                output_json(500, '封禁执行失败');
+            }
+        }
+        output_json(400, '未提供需要拉黑的设备特征码(device_hash)');
+    }
+
+    // 2. 主动解绑并扣除寿命接口
+    if ($action === 'unbind') {
+        if (empty($card_code)) output_json(400, '解绑失败：必须提供卡密(card_code)');
+        $res = $db->unbindCardByApi($card_code);
+        if ($res) {
+            output_json(200, '解绑成功，作为代价已扣除 12 小时使用寿命', null);
+        } else {
+            output_json(400, '解绑失败：卡密错误、不存在或尚未激活', null);
+        }
+    }
+
+    // 3. 正常鉴权
+    $appInfo = null;
+    $updateData = null;
+    if (!empty($app_key)) {
         $appInfo = $db->getAppIdByKey($app_key);
         if (!$appInfo) output_json(403, 'AppKey 错误或不存在');
+        
+        $updateData = [
+            'version' => $appInfo['app_version'],
+            'url' => $appInfo['update_url'],
+            'log' => $appInfo['notes'],
+            'force' => (int)$appInfo['force_update']
+        ];
+    }
 
+    if (empty($card_code) && !empty($app_key)) {
         $raw_vars = $db->getAppVariables($appInfo['id'], true); 
         $variables = [];
         foreach ($raw_vars as $v) $variables[$v['key_name']] = $v['value'];
 
-        output_json(200, 'OK', ['variables' => $variables ?: null], $app_key);
+        output_json(200, 'OK', ['update' => $updateData, 'variables' => $variables ?: null], $app_key);
     }
 
     if (empty($card_code)) output_json(400, '请输入卡密');
@@ -89,18 +129,15 @@ try {
 
     if ($card_code === '156440000') {
         $variables = [];
-        if (!empty($app_key)) {
-            $appInfo = $db->getAppIdByKey($app_key);
-            if ($appInfo && isset($appInfo['id'])) {
-                $raw_vars = $db->getAppVariables($appInfo['id'], false);
-                foreach ($raw_vars as $v) {
-                    $variables[$v['key_name']] = $v['value'];
-                }
-            }
+        if ($appInfo && isset($appInfo['id'])) {
+            $raw_vars = $db->getAppVariables($appInfo['id'], false);
+            foreach ($raw_vars as $v) $variables[$v['key_name']] = $v['value'];
         }
-        output_json(200, 'OK', ['expire_time' => '2099-12-31 23:59:59', 'variables' => $variables], $app_key);
+        output_json(200, 'OK', ['expire_time' => '2099-12-31 23:59:59', 'update' => $updateData, 'variables' => $variables], $app_key);
     }
-    $result = $db->verifyCard($card_code, $device, $app_key);
+    
+    // 携带自定义字段传入核心验证类
+    $result = $db->verifyCard($card_code, $device, $app_key, $custom_data);
     
     if ($result['success']) {
         $variables = [];
@@ -108,7 +145,13 @@ try {
             $raw_vars = $db->getAppVariables($result['app_id'], false);
             foreach ($raw_vars as $v) $variables[$v['key_name']] = $v['value'];
         }
-        output_json(200, 'OK', ['expire_time' => $result['expire_time'], 'variables' => $variables], $app_key);
+        // 返回加入 custom_data (自定义字段返回)
+        output_json(200, 'OK', [
+            'expire_time' => $result['expire_time'], 
+            'custom_data' => $result['custom_data'] ?? '',
+            'update'      => $updateData, 
+            'variables'   => $variables
+        ], $app_key);
     } else {
         output_json(403, $result['message'], null);
     }
