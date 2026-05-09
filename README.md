@@ -1,3 +1,4 @@
+```markdown
 <div align="center">
 
 # GuYi Access Pro
@@ -14,14 +15,13 @@ GuYi Access 都为您准备了极其详尽的、开箱即用的对接源码。
 
 <br>
 
-<!-- 建议您在这里放一张后台数据总览的精美截图，极大地提升项目的吸引力 -->
-> 🖼️ **系统截图：** *(请在此处替换为您后台的真实截图 `![Dashboard](assets/screenshot.png)`)*
+![GuYi Access Dashboard](assets/screenshot.png)
 
 <br>
 
 🌐 **[官方网站 - 全球高速线路 (推荐)](https://official.可爱.top/)** ｜ 🌍 **[官方网站 - 海外备用线路](https://guyiovo.github.io/GuYi-Access-wed/)** ｜ 🏠 **[作者主页](https://可爱.top/)**
 
-👨‍💻 **联系作者:** QQ 156440000 ｜ ✉️ **Email:** 156440000@qq.com
+👨‍💻 **联系作者:** QQ 156440000 ｜ ✉️ **Email:** karacsonyerik594@gmail.com
 
 </div>
 
@@ -134,8 +134,5 @@ GuYi Access 的设计初衷是为了打破语言壁垒。目前代码演示已�
 
 本项目采用 [MIT License](https://opensource.org/licenses/MIT) 开源协议。
 
-您可以自由地将 GuYi Access 用于个人或商业项目中。在使用、修改或分发过程中，**保留原作者的版权信息**是对开源精神最大的支持。
-
----
-
-**Made with ♥ for Developers by GuYi.**
+您可以自由地将 GuYi Access 用于个人或商业项目中。在使用、修改或分发过程中，保留原作者的版权信息是对开源精神最大的支持。
+```
