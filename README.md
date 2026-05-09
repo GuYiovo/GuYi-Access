@@ -15,13 +15,13 @@ GuYi Access 都为您准备了极其详尽的、开箱即用的对接源码。
 
 <br>
 
-<img src="assets/screenshot.png" alt="GuYi Access Dashboard" width="100%" style="border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);">
+![GuYi Access Dashboard](assets/screenshot.png)
 
 <br>
 
 🌐 **[官方网站 - 全球高速线路 (推荐)](https://official.可爱.top/)** ｜ 🌍 **[官方网站 - 海外备用线路](https://guyiovo.github.io/GuYi-Access-wed/)** ｜ 🏠 **[作者主页](https://可爱.top/)**
 
-👨‍💻 **联系作者:** QQ 156440000 ｜ ✉️ **Email:** karacsonyerik594@gmail.com
+👨‍💻 **联系作者:** QQ 156440000 ｜ ✉️ **Email:** 156440000@qq.com
 
 </div>
 
