@@ -15,7 +15,7 @@ GuYi Access 都为您准备了极其详尽的、开箱即用的对接源码。
 
 <br>
 
-![GuYi Access Dashboard](assets/screenshot.png)
+<img src="assets/screenshot.png" alt="GuYi Access Dashboard" width="100%" style="border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);">
 
 <br>
 
