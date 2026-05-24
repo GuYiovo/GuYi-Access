@@ -576,18 +576,37 @@ if (!class_exists('Database')) {
             return $str;
         }
 
-        public function exportAllData() {
+        // 优化：流式导出数据，直接写入标准输出流，内存占用极小
+        public function exportAllDataStream($out) {
             $tables = ['applications', 'app_variables', 'cards', 'active_devices', 'usage_logs', 'blacklists', 'system_settings', 'admin'];
-            $data = [];
+            fwrite($out, '{');
+            $firstTable = true;
             foreach ($tables as $table) {
+                if (!$firstTable) {
+                    fwrite($out, ',');
+                }
+                $firstTable = false;
+                fwrite($out, '"' . $table . '":[');
+                
                 try {
-                    $stmt = $this->pdo->query("SELECT * FROM {$table}");
-                    $data[$table] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                } catch (Exception $e) {}
+                    $stmt = $this->pdo->query("SELECT * FROM `{$table}`");
+                    $firstRow = true;
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        if (!$firstRow) {
+                            fwrite($out, ',');
+                        }
+                        $firstRow = false;
+                        fwrite($out, json_encode($row, JSON_UNESCAPED_UNICODE));
+                    }
+                } catch (Exception $e) {
+                    // 出错时输出空数组
+                }
+                fwrite($out, ']');
             }
-            return $data;
+            fwrite($out, '}');
         }
 
+        // 优化：分批插单 (Batch Insert)，极大提高导入速度
         public function importAllData($data) {
             $tables = ['applications', 'app_variables', 'cards', 'active_devices', 'usage_logs', 'blacklists', 'system_settings', 'admin'];
             $this->pdo->beginTransaction();
@@ -595,18 +614,25 @@ if (!class_exists('Database')) {
                 $this->pdo->exec("SET FOREIGN_KEY_CHECKS=0");
                 foreach ($tables as $table) {
                     if (isset($data[$table]) && is_array($data[$table])) {
-                        $this->pdo->exec("TRUNCATE TABLE {$table}");
+                        $this->pdo->exec("TRUNCATE TABLE `{$table}`");
                         if (!empty($data[$table])) {
                             $columns = array_keys($data[$table][0]);
                             $colStr = implode(',', array_map(function($c){ return "`$c`"; }, $columns));
-                            $placeholders = implode(',', array_fill(0, count($columns), '?'));
-                            $sql = "INSERT INTO {$table} ({$colStr}) VALUES ({$placeholders})";
-                            $stmt = $this->pdo->prepare($sql);
-                            foreach ($data[$table] as $row) {
+                            
+                            // 分批次插入，每批500条
+                            $chunks = array_chunk($data[$table], 500);
+                            foreach ($chunks as $chunk) {
+                                $valuePlaceholders = [];
                                 $values = [];
-                                foreach ($columns as $col) {
-                                    $values[] = $row[$col];
+                                foreach ($chunk as $row) {
+                                    $placeholders = array_fill(0, count($columns), '?');
+                                    $valuePlaceholders[] = '(' . implode(',', $placeholders) . ')';
+                                    foreach ($columns as $col) {
+                                        $values[] = isset($row[$col]) ? $row[$col] : null;
+                                    }
                                 }
+                                $sql = "INSERT INTO `{$table}` ({$colStr}) VALUES " . implode(',', $valuePlaceholders);
+                                $stmt = $this->pdo->prepare($sql);
                                 $stmt->execute($values);
                             }
                         }

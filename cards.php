@@ -51,12 +51,16 @@ function verifyCSRF() {
     }
 }
 
+// 优化：流式导出，防止大日志引起的内存溢出 (OOM)
 if (isset($_GET['action']) && $_GET['action'] === 'export_system') {
-    $data = $db->exportAllData();
+    ini_set('memory_limit', '512M');
+    set_time_limit(240);
     if (ob_get_level()) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
     header('Content-Disposition: attachment; filename="System_Migrate_'.date('YmdHis').'.json"');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    $out = fopen('php://output', 'w');
+    $db->exportAllDataStream($out);
+    fclose($out);
     exit;
 }
 
@@ -74,8 +78,17 @@ $currentAdminUser = $db->getAdminUsername();
 $conf_site_title = !empty($sysConf['site_title']) ? $sysConf['site_title'] : 'GuYi Access';
 $conf_favicon = !empty($sysConf['favicon']) ? $sysConf['favicon'] : base64_decode('aHR0cHM6Ly9xMS5xbG9nby5jbi9nP2I9cXEmbms9MTU2NDQwMDAwJnM9NjQw');
 $conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : base64_decode('aHR0cHM6Ly9xMS5xbG9nby5jbi9nP2I9cXEmbms9MTU2NDQwMDAwJnM9NjQw');
-$conf_bg_pc = !empty($sysConf['bg_pc']) ? $sysConf['bg_pc'] : 'https://www.loliapi.com/acg/pc/';
-$conf_bg_mobile = !empty($sysConf['bg_mobile']) ? $sysConf['bg_mobile'] : 'https://www.loliapi.com/acg/pe/';
+
+// =============================================================
+// 【自定义壁纸配置】强行只认此处源码，彻底无视数据库的旧缓存
+// =============================================================
+$my_new_pc_bg = 'https://cloudupdate.xn--jpr071e.top/Wallpaper images/Desktop.webp';     // 1. 在这里写入你的新电脑壁纸地址或接口
+$my_new_mobile_bg = 'https://cloudupdate.xn--jpr071e.top/Wallpaper images/Mobile.webp'; // 2. 在这里写入你的新手机壁纸地址或接口
+$wallpaper_version = '1.0.2';                                                          // 3. 每次更换壁纸，修改一下这个版本号（如 1.0.3），强制 CDN 和浏览器刷新缓存
+// =============================================================
+
+$conf_bg_pc = $my_new_pc_bg . '?v=' . $wallpaper_version;
+$conf_bg_mobile = $my_new_mobile_bg . '?v=' . $wallpaper_version;
 $conf_bg_blur = $sysConf['bg_blur'] ?? '0';
 $conf_api_encrypt = $sysConf['api_encrypt'] ?? '1';
 
@@ -207,8 +220,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'site_title' => $conf_site_title,
                 'favicon' => $conf_favicon,
                 'admin_avatar' => $conf_avatar,
-                'bg_pc' => $conf_bg_pc,
-                'bg_mobile' => $conf_bg_mobile,
+                'bg_pc' => $my_new_pc_bg,     // 此处与顶部一致，确保系统后台保存时不出现冲突
+                'bg_mobile' => $my_new_mobile_bg,
                 'bg_blur' => isset($_POST['bg_blur']) ? '1' : '0',
                 'api_encrypt' => isset($_POST['api_encrypt']) ? '1' : '0'
             ];
@@ -223,6 +236,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $count = $db->cleanupExpiredCards(); $msg = "已清理 {$count} 张过期卡密";
     } 
     elseif (isset($_POST['import_system'])) {
+        // 优化：导入时提升脚本资源限制
+        ini_set('memory_limit', '512M');
+        set_time_limit(240);
         if (isset($_FILES['backup_file']) && $_FILES['backup_file']['error'] == UPLOAD_ERR_OK) {
             $content = file_get_contents($_FILES['backup_file']['tmp_name']);
             $data = json_decode($content, true);
@@ -321,6 +337,21 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="assets/css/cards.css?v=<?= time() ?>" rel="stylesheet">
 <style>
+/* 彻底重置背景容器，防止跑到屏幕外 */
+.env, .env-photo {
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+.env-photo {
+    background-size: cover !important;
+    background-position: center center !important;
+}
 @media (max-width: 768px) {
     .m-bottom-nav {
         display: flex !important;
@@ -611,7 +642,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                 <span class="text-[10px] mono text-white/70 truncate flex-1"><?= $apiUrl ?></span>
                                 <i class="ph-bold ph-copy text-purple-400"></i>
                             </div>
-                            <div class="text-[10px] text-white/30 leading-relaxed">请妥善保管每个应用的 AppKey，客户端通过接口地址和对应的 AppKey 进行卡密验证及变量获取。</div>
+                            <div class="text-[10px] text-white/30 leading-relaxed">请妥善保管每个应用的 AppKey，客户端通过接口地址 and 对应的 AppKey 进行卡密验证及变量获取。</div>
                         </div>
                     </div>
                 </div>
