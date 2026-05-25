@@ -436,12 +436,17 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         <?php if ($tab == 'dashboard'): ?>
             <div class="pg-head rise"><h2 class="pg-title">欢迎，<?= htmlspecialchars($currentAdminUser) ?></h2><p class="pg-sub">Current IP: <?= $current_ip ?></p></div>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 md:mb-7 rise">
-                <div class="glass p-4 md:p-5 flex flex-col justify-between relative overflow-hidden">
+            <!-- 重构：采用 2:1 比例非对称栅格，全面放宽公告区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 md:mb-7 rise">
+                <!-- 公告板块：占宽度 2/3 (lg:col-span-2) -->
+                <div class="glass p-4 md:p-5 lg:col-span-2 flex flex-col justify-between relative overflow-hidden">
                     <div class="absolute -right-6 -top-6 text-pink-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-megaphone"></i></div>
-                    <div class="relative z-10">
-                        <h3 class="text-sm font-bold text-white/90 mb-2 flex items-center justify-between">
-                            <div class="flex items-center gap-2"><i class="ph-fill ph-megaphone text-[18px] text-pink-400"></i> 系统公告</div>
+                    <div class="relative z-10 flex-1 flex flex-col">
+                        <h3 class="text-sm font-bold text-white/90 mb-2 flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center gap-2">
+                                <i class="ph-fill ph-megaphone text-[18px] text-pink-400"></i> 系统公告
+                                <span class="text-[10px] bg-gradient-to-r from-pink-500/20 to-purple-500/20 text-pink-300 font-medium px-2 py-0.5 rounded-full border border-pink-500/30 font-mono">最后更新：2026.5.25</span>
+                            </div>
                             <a href="?tab=about" class="text-[10px] text-pink-400 hover:text-pink-300 font-bold bg-pink-500/10 px-2 py-1 rounded transition-colors flex items-center gap-1">关于系统 <i class="ph-bold ph-arrow-right"></i></a>
                         </h3>
                         
@@ -452,17 +457,19 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                             #cloud-notice a { color: #60a5fa; text-decoration: none; border-bottom: 1px solid rgba(96,165,250,0.4); padding-bottom: 1px; }
                             #cloud-notice a:hover { color: #93c5fd; }
                         </style>
-                        <div id="cloud-notice" class="text-[12px] text-white/70 leading-relaxed mt-3" style="max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; padding-right: 5px;">
+                        <!-- 公告纵向高度扩容到 200px -->
+                        <div id="cloud-notice" class="text-[12px] text-white/70 leading-relaxed mt-3 flex-1" style="max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; padding-right: 5px;">
                             <span class="text-white/40 flex items-center"><i class="ph-bold ph-spinner animate-spin mr-1.5"></i>连接云端同步公告中...</span>
                         </div>
                     </div>
                 </div>
                 
-                <div class="glass p-4 md:p-5 flex flex-col justify-between relative overflow-hidden">
+                <!-- 诗词板块：占宽度 1/3 (lg:col-span-1) -->
+                <div class="glass p-4 md:p-5 lg:col-span-1 flex flex-col justify-between relative overflow-hidden">
                     <div class="absolute -right-6 -top-6 text-yellow-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-cloud-sun"></i></div>
                     <div class="relative z-10 flex-1 flex flex-col justify-center">
                         <h3 class="text-sm font-bold text-white/90 mb-1 flex items-center gap-2"><i class="ph-fill ph-cloud-sun text-[18px] text-yellow-400"></i> 每日一诗</h3>
-                        <div id="poem_content" class="text-lg font-serif font-bold text-white/80 my-2 tracking-wide leading-relaxed">加载中...</div>
+                        <div id="poem_content" class="text-base font-serif font-bold text-white/80 my-2 tracking-wide leading-relaxed">加载中...</div>
                         <div id="poem_info" class="text-xs text-white/40 mono mt-1"></div>
                     </div>
                 </div>
@@ -584,7 +591,6 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                             <?= htmlspecialchars($app['notes']?:'无备注') ?>
                                         </div>
                                     </td>
-                                    <!-- APPKEY 完整显示 -->
                                     <td class="p-3.5"><span class="pill pill-free text-[9px] mono cursor-pointer" onclick="copy('<?= $app['app_key'] ?>')"><i class="ph-bold ph-key mr-1 text-blue-400"></i><?= $app['app_key'] ?></span></td>
                                     <td class="p-3.5"><span class="pill pill-admin text-[9px]"><?= number_format($app['card_count']) ?> 张</span></td>
                                     <td class="p-3.5"><?= $app['status']==1 ? '<span class="pill pill-on text-[9px]">正常</span>' : '<span class="pill pill-banned text-[9px]">禁用</span>' ?></td>
@@ -1162,14 +1168,12 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         // 升级版 Copy 接口：100% 兼容无 SSL (HTTP) 证书下的复制操作
         function copy(t){
             if (navigator.clipboard && window.isSecureContext) {
-                // 如果存在 SSL 且浏览器支持新版 Clipboard API
                 navigator.clipboard.writeText(t).then(()=>{
                     toast('已复制到剪贴板');
                 }).catch(()=>{
                     fallbackCopy(t);
                 });
             } else {
-                // 无安全证书 HTTP 协议回退兼容技术
                 fallbackCopy(t);
             }
         }
