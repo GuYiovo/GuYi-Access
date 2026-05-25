@@ -950,7 +950,7 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                 <?php foreach (CARD_TYPES as $k => $v): ?>
                                     <option value="<?= $k ?>"><?= $v['name'] ?> (<?= $v['duration'] >= 86400 ? ($v['duration'] / 86400) . '天' : ($v['duration'] / 3600) . '小时' ?>)</option>
                                 <?php endforeach; ?>
-                                <option value="custom" class="text-pink-400">✍️ 任意自定义时长</option>
+                                <option value="custom" class="text-pink-400">任意自定义时长</option>
                             </select>
                         </div>
                         
