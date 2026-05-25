@@ -584,7 +584,8 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                                             <?= htmlspecialchars($app['notes']?:'无备注') ?>
                                         </div>
                                     </td>
-                                    <td class="p-3.5"><span class="pill pill-free text-[9px] mono cursor-pointer" onclick="copy('<?= $app['app_key'] ?>')"><i class="ph-bold ph-key mr-1 text-blue-400"></i><?= substr($app['app_key'],0,12) ?>...</span></td>
+                                    <!-- APPKEY 完整显示 -->
+                                    <td class="p-3.5"><span class="pill pill-free text-[9px] mono cursor-pointer" onclick="copy('<?= $app['app_key'] ?>')"><i class="ph-bold ph-key mr-1 text-blue-400"></i><?= $app['app_key'] ?></span></td>
                                     <td class="p-3.5"><span class="pill pill-admin text-[9px]"><?= number_format($app['card_count']) ?> 张</span></td>
                                     <td class="p-3.5"><?= $app['status']==1 ? '<span class="pill pill-on text-[9px]">正常</span>' : '<span class="pill pill-banned text-[9px]">禁用</span>' ?></td>
                                     <td class="p-3.5 text-right">
@@ -1157,7 +1158,45 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
     <script>
         let _t;
         function toast(m,t='ok'){clearTimeout(_t);const e=document.getElementById('toastEl'),i=document.getElementById('toastIc');document.getElementById('toastTx').textContent=m;i.className='ph-fill '+(t==='error'?'ph-warning-circle':'ph-check-circle')+' text-lg';i.style.color=t==='error'?'var(--sys-red)':'var(--sys-green)';e.classList.add('show');_t=setTimeout(()=>e.classList.remove('show'),3200)}
-        function copy(t){navigator.clipboard.writeText(t).then(()=>{toast('已复制到剪贴板')})}
+        
+        // 升级版 Copy 接口：100% 兼容无 SSL (HTTP) 证书下的复制操作
+        function copy(t){
+            if (navigator.clipboard && window.isSecureContext) {
+                // 如果存在 SSL 且浏览器支持新版 Clipboard API
+                navigator.clipboard.writeText(t).then(()=>{
+                    toast('已复制到剪贴板');
+                }).catch(()=>{
+                    fallbackCopy(t);
+                });
+            } else {
+                // 无安全证书 HTTP 协议回退兼容技术
+                fallbackCopy(t);
+            }
+        }
+
+        // 传统方式兼容备用复制
+        function fallbackCopy(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; 
+            textArea.style.top = "-999999px";
+            textArea.style.left = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    toast('已复制到剪贴板');
+                } else {
+                    toast('复制失败，请手动选择复制', 'error');
+                }
+            } catch (err) {
+                toast('复制失败，请手动选择复制', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+
         function toggleAllChecks(el){document.querySelectorAll('.row-check').forEach(c=>c.checked=el.checked)}
         function singleActionForm(a, id, k='id'){if(!confirm('确定操作？'))return;const f=document.createElement('form');f.method='POST';f.style.display='none';const i1=document.createElement('input');i1.name=a;i1.value='1';const i2=document.createElement('input');i2.name=k;i2.value=id;const i3=document.createElement('input');i3.name='csrf_token';i3.value='<?= $csrf_token ?>';f.appendChild(i1);f.appendChild(i2);f.appendChild(i3);document.body.appendChild(f);f.submit()}
         function submitBatch(a){if(document.querySelectorAll('.row-check:checked').length===0){toast('请先勾选卡密','error');return}if(!confirm('确定执行？'))return;const f=document.getElementById('batchForm'),h=document.createElement('input');h.type='hidden';h.name=a;h.value='1';f.appendChild(h);f.submit()}
