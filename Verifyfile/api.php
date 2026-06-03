@@ -7,7 +7,7 @@ header('Content-Type: application/json; charset=utf-8');
 // --- 并发安全的频率限制 (通过 LOCK_EX 优化控制) ---
 $rate_ip = $_SERVER['REMOTE_ADDR'];
 $rate_file = sys_get_temp_dir() . '/rate_' . md5($rate_ip);
-$current_minute = date('Hi'); // 格式 1425 (小时分钟)
+$current_minute = date('Hi');
 $rate_data = @json_decode(@file_get_contents($rate_file), true);
 
 if (is_array($rate_data) && isset($rate_data['time']) && $rate_data['time'] == $current_minute) {
@@ -29,9 +29,7 @@ try {
     $db = new Database();
     $sysConf = $db->getSystemSettings();
     $api_encrypt_enabled = $sysConf['api_encrypt'] ?? '1';
-} catch (Exception $e) {
-    // 若数据库未连接，会在后面的 try 块中直接抛出中断
-}
+} catch (Exception $e) { }
 
 // --- [AES-256-GCM 输出封装函数] ---
 function output_json($code, $msg, $data = null, $encryptKey = null) {
@@ -57,7 +55,6 @@ function output_json($code, $msg, $data = null, $encryptKey = null) {
 $json_input = file_get_contents('php://input');
 $data = [];
 if (!empty($json_input)) $data = json_decode($json_input, true) ?? [];
-// 兼容 POST 表单和 JSON
 if (is_array($data)) {
     $data = array_merge($_GET, $_POST, $data);
 } else {
@@ -75,7 +72,72 @@ try {
         throw new Exception("数据库连接失败");
     }
 
-    // 1. 无卡密上报全局设备/IP黑名单 (反破解/调试触发)
+    // ==========================================
+    // ⭐ [新增] 管理端 API / 发卡网对接接口
+    // ==========================================
+    if (in_array($action, ['generate', 'ban', 'unban', 'del_card', 'kick'])) {
+        $api_token = isset($data['api_token']) ? trim($data['api_token']) : '';
+        
+        // ----------------------------------------------------
+        // ⭐【请注意】您的专属管理员对接通信密钥在这里修改！
+        // ----------------------------------------------------
+        $admin_api_token = 'GuYiAdmin123'; 
+        
+        if ($api_token !== $admin_api_token) {
+            output_json(403, '无权操作：对接通信密钥(api_token)错误或未提供！');
+        }
+
+        // 1. 批量/单张生成卡密
+        if ($action === 'generate') {
+            $appId = isset($data['app_id']) ? intval($data['app_id']) : 0;
+            if ($appId <= 0 && !empty($app_key)) {
+                $appInfo = $db->getAppIdByKey($app_key);
+                if ($appInfo) $appId = $appInfo['id'];
+            }
+            if ($appId <= 0) output_json(400, '生成失败：请提供有效的 app_id 或 app_key');
+            
+            $type = isset($data['type']) ? $data['type'] : 'day';
+            $num = isset($data['num']) ? intval($data['num']) : 1;
+            $note = isset($data['note']) ? trim($data['note']) : 'API接口批量生卡';
+            $pre = isset($data['pre']) ? trim($data['pre']) : '';
+            $customHours = isset($data['custom_hours']) ? floatval($data['custom_hours']) : 0;
+            
+            try {
+                $newCodes = $db->generateCards($num, $type, $pre, '', 16, $note, $appId, intval($customHours * 3600));
+                $cardStr = implode("\n", $newCodes); 
+                output_json(200, "成功生成 {$num} 张卡密", ['cards' => $newCodes, 'card_string' => $cardStr]);
+            } catch (Exception $e) {
+                output_json(500, '生成失败: ' . $e->getMessage());
+            }
+        }
+        
+        // 2. 封禁 / 解封 / 彻底删除 / 无损踢下线
+        if (in_array($action, ['ban', 'unban', 'del_card', 'kick'])) {
+            if (empty($card_code)) output_json(400, '缺少要操作的卡密(card_code)参数');
+            
+            $stmt = $db->pdo->prepare("SELECT id FROM cards WHERE card_code = ?");
+            $stmt->execute([$card_code]);
+            $c = $stmt->fetch();
+            if (!$c) output_json(404, '该卡密不存在于数据库中');
+            
+            if ($action === 'ban') {
+                $db->updateCardStatus($c['id'], 2);
+                output_json(200, '卡密已成功封禁');
+            } elseif ($action === 'unban') {
+                $db->updateCardStatus($c['id'], 1);
+                output_json(200, '卡密已解除封禁，恢复正常');
+            } elseif ($action === 'del_card') {
+                $db->deleteCard($c['id']);
+                output_json(200, '卡密已成功彻底删除');
+            } elseif ($action === 'kick') {
+                // 老板特权：强制踢下线并清除设备绑定（不扣时间）
+                $db->resetDeviceBindingByCardId($c['id']);
+                output_json(200, '卡密已强制踢下线并成功解绑设备');
+            }
+        }
+    }
+    // ==========================================
+
     if ($action === 'ban_machine' || $action === 'blacklist') {
         $reason = isset($data['reason']) ? trim($data['reason']) : '触发客户端安全防御策略';
         if (!empty($device)) {
@@ -90,7 +152,6 @@ try {
         output_json(400, '未提供需要拉黑的设备特征码(device_hash)');
     }
 
-    // 2. 主动解绑并扣除寿命接口
     if ($action === 'unbind') {
         if (empty($card_code)) output_json(400, '解绑失败：必须提供卡密(card_code)');
         $res = $db->unbindCardByApi($card_code);
@@ -101,7 +162,6 @@ try {
         }
     }
 
-    // 3. 正常鉴权
     $appInfo = null;
     $updateData = null;
     if (!empty($app_key)) {
@@ -120,7 +180,6 @@ try {
         $raw_vars = $db->getAppVariables($appInfo['id'], true); 
         $variables = [];
         foreach ($raw_vars as $v) $variables[$v['key_name']] = $v['value'];
-
         output_json(200, 'OK', ['update' => $updateData, 'variables' => $variables ?: null], $app_key);
     }
 
@@ -136,7 +195,6 @@ try {
         output_json(200, 'OK', ['expire_time' => '2099-12-31 23:59:59', 'update' => $updateData, 'variables' => $variables], $app_key);
     }
     
-    // 携带自定义字段传入核心验证类
     $result = $db->verifyCard($card_code, $device, $app_key, $custom_data);
     
     if ($result['success']) {
@@ -145,7 +203,6 @@ try {
             $raw_vars = $db->getAppVariables($result['app_id'], false);
             foreach ($raw_vars as $v) $variables[$v['key_name']] = $v['value'];
         }
-        // 返回加入 custom_data (自定义字段返回)
         output_json(200, 'OK', [
             'expire_time' => $result['expire_time'], 
             'custom_data' => $result['custom_data'] ?? '',

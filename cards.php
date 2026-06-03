@@ -375,6 +375,14 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         min-width: 64px !important;
     }
 }
+/* 优雅极简的隐藏式滚动条 */
+.custom-scroll::-webkit-scrollbar { width: 3px; }
+.custom-scroll::-webkit-scrollbar-track { background: transparent; }
+.custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+.custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+/* 清理多余文本链接颜色 */
+#cloud-notice a, #update-content a { color: rgba(255,255,255,0.8); text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 1px; transition: all 0.2s; }
+#cloud-notice a:hover, #update-content a:hover { color: #fff; border-bottom-color: rgba(255,255,255,0.6); }
 </style>
 </head>
 <body>
@@ -436,41 +444,31 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
         <?php if ($tab == 'dashboard'): ?>
             <div class="pg-head rise"><h2 class="pg-title">欢迎，<?= htmlspecialchars($currentAdminUser) ?></h2><p class="pg-sub">Current IP: <?= $current_ip ?></p></div>
             
-            <!-- 重构：采用 2:1 比例非对称栅格，全面放宽公告区域 -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 md:mb-7 rise">
-                <!-- 公告板块：占宽度 2/3 (lg:col-span-2) -->
-                <div class="glass p-4 md:p-5 lg:col-span-2 flex flex-col justify-between relative overflow-hidden">
-                    <div class="absolute -right-6 -top-6 text-pink-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-megaphone"></i></div>
-                    <div class="relative z-10 flex-1 flex flex-col">
-                        <h3 class="text-sm font-bold text-white/90 mb-2 flex items-center justify-between flex-wrap gap-2">
-                            <div class="flex items-center gap-2">
-                                <i class="ph-fill ph-megaphone text-[18px] text-pink-400"></i> 系统公告
-                                <span class="text-[10px] bg-gradient-to-r from-pink-500/20 to-purple-500/20 text-pink-300 font-medium px-2 py-0.5 rounded-full border border-pink-500/30 font-mono">最后更新：2026.5.25</span>
-                            </div>
-                            <a href="?tab=about" class="text-[10px] text-pink-400 hover:text-pink-300 font-bold bg-pink-500/10 px-2 py-1 rounded transition-colors flex items-center gap-1">关于系统 <i class="ph-bold ph-arrow-right"></i></a>
-                        </h3>
-                        
-                        <style>
-                            #cloud-notice::-webkit-scrollbar { width: 4px; }
-                            #cloud-notice::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
-                            #cloud-notice::-webkit-scrollbar-track { background: transparent; }
-                            #cloud-notice a { color: #60a5fa; text-decoration: none; border-bottom: 1px solid rgba(96,165,250,0.4); padding-bottom: 1px; }
-                            #cloud-notice a:hover { color: #93c5fd; }
-                        </style>
-                        <!-- 公告纵向高度扩容到 200px -->
-                        <div id="cloud-notice" class="text-[12px] text-white/70 leading-relaxed mt-3 flex-1" style="max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; padding-right: 5px;">
-                            <span class="text-white/40 flex items-center"><i class="ph-bold ph-spinner animate-spin mr-1.5"></i>连接云端同步公告中...</span>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-7 rise">
+                <!-- 公告板块：占宽度 2/3 (lg:col-span-2) - 极简白风格 -->
+                <div class="glass p-5 md:p-6 lg:col-span-2 flex flex-col">
+                    <div class="flex items-center justify-between mb-4 border-b border-white/[0.04] pb-3">
+                        <div class="flex items-baseline gap-3">
+                            <h3 class="text-[13px] font-bold text-white/90 tracking-wide">系统公告</h3>
+                            <span class="text-[10px] text-white/30 font-mono">最后更新日期：2026.6.3</span>
                         </div>
+                        <a href="?tab=about" class="text-[10px] text-white/40 hover:text-white/80 transition-colors">关于系统 <span class="font-serif">&rarr;</span></a>
+                    </div>
+                    
+                    <div id="cloud-notice" class="custom-scroll text-[11.5px] text-white/60 leading-[1.8] flex-1" style="max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; padding-right: 8px;">
+                        <span class="text-white/30 flex items-center"><i class="ph-bold ph-spinner animate-spin mr-1.5"></i>同步中...</span>
                     </div>
                 </div>
                 
-                <!-- 诗词板块：占宽度 1/3 (lg:col-span-1) -->
-                <div class="glass p-4 md:p-5 lg:col-span-1 flex flex-col justify-between relative overflow-hidden">
-                    <div class="absolute -right-6 -top-6 text-yellow-500/5 text-[100px] pointer-events-none"><i class="ph-fill ph-cloud-sun"></i></div>
-                    <div class="relative z-10 flex-1 flex flex-col justify-center">
-                        <h3 class="text-sm font-bold text-white/90 mb-1 flex items-center gap-2"><i class="ph-fill ph-cloud-sun text-[18px] text-yellow-400"></i> 每日一诗</h3>
-                        <div id="poem_content" class="text-base font-serif font-bold text-white/80 my-2 tracking-wide leading-relaxed">加载中...</div>
-                        <div id="poem_info" class="text-xs text-white/40 mono mt-1"></div>
+                <!-- 更新公告板块：占宽度 1/3 (lg:col-span-1) - 极简白风格 -->
+                <div class="glass p-5 md:p-6 lg:col-span-1 flex flex-col">
+                    <div class="flex items-center justify-between mb-4 border-b border-white/[0.04] pb-3">
+                        <h3 class="text-[13px] font-bold text-white/90 tracking-wide">版本更新动态</h3>
+                        <span class="text-[10px] text-white/30 font-mono">Auto Sync</span>
+                    </div>
+                    
+                    <div id="update-content" class="custom-scroll text-[11.5px] text-white/60 leading-[1.8] flex-1" style="max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; padding-right: 8px;">
+                        <span class="text-white/30 flex items-center"><i class="ph-bold ph-spinner animate-spin mr-1.5"></i>拉取中...</span>
                     </div>
                 </div>
             </div>
@@ -1070,14 +1068,28 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                     <form method="POST" class="space-y-3">
                         <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="update_settings" value="1">
                         
-                        <label class="flex items-center gap-2 cursor-pointer mt-2 bg-white/[0.02] p-4 rounded-xl border border-white/[0.05]">
-                            <input type="checkbox" name="bg_blur" value="1" <?= $conf_bg_blur=='1'?'checked':'' ?> class="w-4 h-4 accent-pink-500 rounded bg-black/20 border-white/10">
-                            <span class="text-[12px] font-bold text-white/80">开启背景全局模糊 (Glass Effect)</span>
+                        <label class="flex items-center justify-between cursor-pointer p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-colors mb-2 mt-2">
+                            <div class="flex flex-col pr-4">
+                                <span class="text-[12px] font-bold text-white/80">背景全局模糊</span>
+                                <span class="text-[9px] text-white/30 mt-0.5">Glass Effect 沉浸式毛玻璃体验</span>
+                            </div>
+                            <div class="relative shrink-0 w-10 h-5">
+                                <input type="checkbox" name="bg_blur" value="1" <?= $conf_bg_blur=='1'?'checked':'' ?> class="peer sr-only">
+                                <div class="block w-full h-full bg-black/40 border border-white/10 rounded-full transition-colors duration-300 peer-checked:bg-white/30 peer-checked:border-white/30"></div>
+                                <div class="absolute left-[2px] top-[2px] w-4 h-4 bg-white/50 rounded-full transition-transform duration-300 peer-checked:translate-x-[20px] peer-checked:bg-white shadow-sm"></div>
+                            </div>
                         </label>
 
-                        <label class="flex items-center gap-2 cursor-pointer mt-2 bg-white/[0.02] p-4 rounded-xl border border-white/[0.05]">
-                            <input type="checkbox" name="api_encrypt" value="1" <?= $conf_api_encrypt=='1'?'checked':'' ?> class="w-4 h-4 accent-pink-500 rounded bg-black/20 border-white/10">
-                            <span class="text-[12px] font-bold text-white/80">开启 API 接口加密通讯 (AES-256-GCM)</span>
+                        <label class="flex items-center justify-between cursor-pointer p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-colors mb-2">
+                            <div class="flex flex-col pr-4">
+                                <span class="text-[12px] font-bold text-white/80">API 接口通讯加密</span>
+                                <span class="text-[9px] text-white/30 mt-0.5">AES-256-GCM 算法保护数据安全</span>
+                            </div>
+                            <div class="relative shrink-0 w-10 h-5">
+                                <input type="checkbox" name="api_encrypt" value="1" <?= $conf_api_encrypt=='1'?'checked':'' ?> class="peer sr-only">
+                                <div class="block w-full h-full bg-black/40 border border-white/10 rounded-full transition-colors duration-300 peer-checked:bg-white/30 peer-checked:border-white/30"></div>
+                                <div class="absolute left-[2px] top-[2px] w-4 h-4 bg-white/50 rounded-full transition-transform duration-300 peer-checked:translate-x-[20px] peer-checked:bg-white shadow-sm"></div>
+                            </div>
                         </label>
                         
                         <button type="submit" data-no-ajax="true" class="btn btn-sys-blue w-full py-3 mt-4"><i class="ph-bold ph-floppy-disk"></i> 保存设置</button>
@@ -1254,14 +1266,8 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                 Chart.defaults.color='rgba(255,255,255,0.18)';Chart.defaults.borderColor='rgba(255,255,255,0.02)';
                 new Chart(ctx,{type:'doughnut',data:{labels:labels,datasets:[{data:data,backgroundColor:['#64d2ff','#ff375f','#ffd60a','#0a84ff','#bf5af2'],borderWidth:0,hoverOffset:3,spacing:2,borderRadius:3}]},options:{cutout:'68%',plugins:{legend:{position:'bottom',labels:{color:'rgba(255,255,255,0.2)',font:{size:9,weight:700,family:'Inter'},padding:10,boxWidth:8,boxHeight:8,useBorderRadius:true,borderRadius:2}}},animation:{animateRotate:true,duration:800,easing:'easeOutQuart'}}})
             }
-            if(document.getElementById('poem_content') && !window.poemLoaded){
-                fetch('https://v1.jinrishici.com/all.json').then(r=>r.json()).then(d=>{
-                    document.getElementById('poem_content').innerText = d.content;
-                    document.getElementById('poem_info').innerHTML = `<span class="pill pill-admin text-[9px]">${d.author}</span> <span class="ml-2">《${d.origin}》</span>`;
-                }).catch(()=>{ document.getElementById('poem_content').innerText="欲穷千里目，更上一层楼。"; document.getElementById('poem_info').innerHTML=`<span class="pill pill-admin text-[9px]">王之涣</span>`; });
-                window.poemLoaded = true;
-            }
             
+            // 系统公告拉取
             const nC = document.getElementById('cloud-notice');
             if (nC && !nC.dataset.loaded) {
                 let _u = atob(['aHR0cHM6L','y9jbG91ZHVwZGF0','ZS54bi0tanB','yMDcxZS50b','3AvR3VZaSU','yMEFjY2Vzc','yUyMG5vd','GljZS50eHQ='].join(''));
@@ -1272,7 +1278,22 @@ if ($msg) { $sysMsg = $msg; $sysMsgType = 'ok'; } elseif ($errorMsg) { $sysMsg =
                         nC.dataset.loaded = '1'; 
                     })
                     .catch(() => { 
-                        nC.innerHTML = '<span class="text-red-400">云公告同步失败，请检查网络。</span>'; 
+                        nC.innerHTML = '<span class="text-white/30">云公告同步失败，请检查网络。</span>'; 
+                    });
+            }
+
+            // 更新动态日志拉取
+            const uC = document.getElementById('update-content');
+            if (uC && !uC.dataset.loaded) {
+                let updateUrl = 'https://cloudupdate.xn--jpr071e.top/GuYi%20Access/GuYi%20Access%20update%20content.txt';
+                fetch(updateUrl + '?t=' + new Date().getTime())
+                    .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+                    .then(t => { 
+                        uC.innerHTML = t; 
+                        uC.dataset.loaded = '1'; 
+                    })
+                    .catch(() => { 
+                        uC.innerHTML = '<span class="text-white/30">版本更新动态获取失败。</span>'; 
                     });
             }
             
