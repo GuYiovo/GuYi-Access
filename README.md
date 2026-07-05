@@ -5,7 +5,7 @@
 
 ---
 
-![GuYi Access Dashboard](assets/screenshot.png)
+![GuYi Access Dashboard](assets/Picture.png)
 
 ---
 
