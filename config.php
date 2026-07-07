@@ -1,11 +1,10 @@
 <?php
 // config.php
-// 增加生命周期至3天（259200秒），彻底解决后台操作缓慢导致掉线的痛点
-ini_set('session.gc_maxlifetime', 259200);
-session_set_cookie_params(259200);
+// 延长生命周期至30天（2592000秒），彻底解决后台操作缓慢导致掉线的痛点
+ini_set('session.gc_maxlifetime', 2592000);
+session_set_cookie_params(2592000);
 
 if (!defined('DB_INSTALLED_CHECK')) {
-    // 如果未安装，跳转安装
     $current_script = basename($_SERVER['SCRIPT_NAME']);
     if ($current_script !== 'install.php' && file_exists(__DIR__ . '/install.php')) {
         header('Location: install.php');
@@ -13,7 +12,6 @@ if (!defined('DB_INSTALLED_CHECK')) {
     }
 }
 
-// 防报错默认值
 if (!defined('CARD_TYPES')) {
     define('CARD_TYPES', [
         'hour' => ['name' => '小时卡', 'duration' => 3600],

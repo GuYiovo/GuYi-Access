@@ -35,7 +35,6 @@ try {
 // --- [AES-256-GCM 输出封装函数] 增加了响应的 timestamp ---
 function output_json($code, $msg, $data = null, $encryptKey = null) {
     global $api_encrypt_enabled;
-    // ⭐ 服务端响应带上时间戳，方便客户端校验是否为被拦截的旧响应
     $response = ['code' => $code, 'msg' => $msg, 'data' => $data, 'timestamp' => time()];
     $json = json_encode($response, JSON_UNESCAPED_UNICODE);
 

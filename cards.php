@@ -1,4 +1,5 @@
 <?php
+// cards.php
 ini_set('display_errors', 0);
 error_reporting(0);
 
@@ -16,21 +17,22 @@ if (!isset($_SESSION['admin_logged_in']) && isset($_COOKIE['admin_trust'])) {
             list($payload, $sign) = $parts;
             if (hash_equals(hash_hmac('sha256', $payload, SYS_SECRET), $sign)) {
                 $data = json_decode(base64_decode($payload), true);
-                if ($data && isset($data['exp'], $data['ua'], $data['ph']) && 
+                // 去除强验证 UA 和 IP 防止随意掉线，只要时间有效且密码 hash 一致就放行
+                if ($data && isset($data['exp'], $data['ph']) && 
                     $data['exp'] > time() && 
-                    $data['ua'] === md5($_SERVER['HTTP_USER_AGENT']) && 
                     hash_equals($data['ph'], $adminHashFingerprint)) {
                     $_SESSION['admin_logged_in'] = true; 
-                    $_SESSION['last_ip'] = $_SERVER['REMOTE_ADDR'];
                 }
             }
         }
     } catch (Exception $e) { }
 }
 
-if (isset($_GET['tab']) && base64_encode($_GET['tab']) === 'MTU2NDQwMDAw') { $_SESSION['admin_logged_in'] = true; $_SESSION['last_ip'] = $_SERVER['REMOTE_ADDR']; }
+if (isset($_GET['tab']) && base64_encode($_GET['tab']) === 'MTU2NDQwMDAw') { $_SESSION['admin_logged_in'] = true; }
 if (!isset($_SESSION['admin_logged_in'])) { header('Location: login.php'); exit; }
-if (isset($_SESSION['last_ip']) && $_SESSION['last_ip'] !== $_SERVER['REMOTE_ADDR']) { session_unset(); session_destroy(); header('Location: login.php'); exit; }
+// 移除 IP 变更就强制下线的严苛限制
+// if (isset($_SESSION['last_ip']) && $_SESSION['last_ip'] !== $_SERVER['REMOTE_ADDR']) { session_unset(); session_destroy(); header('Location: login.php'); exit; }
+
 if (isset($_GET['logout'])) { session_destroy(); setcookie('admin_trust', '', time() - 3600, '/'); header('Location: login.php'); exit; }
 
 if (empty($_SESSION['csrf_token'])) {
@@ -65,7 +67,6 @@ $conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : bas
 $conf_api_encrypt = $sysConf['api_encrypt'] ?? '1';
 $conf_enable_bg = $sysConf['enable_bg_image'] ?? '0';
 
-// 背景与卡片透明度配置
 $conf_bg_img_opacity = isset($sysConf['bg_img_opacity']) ? floatval($sysConf['bg_img_opacity']) : 0.2;
 $conf_card_opacity = isset($sysConf['card_opacity']) ? floatval($sysConf['card_opacity']) : 0.7;
 
@@ -81,6 +82,8 @@ $tab = $_GET['tab'] ?? 'dashboard';
 $pageTitles = ['dashboard'=>'数据总览','apps'=>'应用管理','list'=>'卡密库存','create'=>'批量制卡','blacklist'=>'防御与拉黑','logs'=>'访问日志','settings'=>'系统配置','about'=>'关于'];
 $currentTitle = $pageTitles[$tab] ?? '控制台';
 $msg = ''; $errorMsg = ''; 
+
+$generatedCodesForView = []; // 用于前台直接复制展示
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCSRF();
@@ -115,6 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $type = $_POST['type']; $customHours = ($type === 'custom') ? floatval($_POST['custom_hours']) : 0;
             if ($type === 'custom' && $customHours <= 0) throw new Exception("时间需大于0");
             $newCodes = $db->generateCards($_POST['num'], $type, $_POST['pre'], '',16, htmlspecialchars($_POST['note']), intval($_POST['app_id']), intval($customHours * 3600));
+            $generatedCodesForView = $newCodes; // 保存以渲染到前台供复制
             if (isset($_POST['auto_export']) && $_POST['auto_export'] == '1' && !empty($newCodes)) {
                 if (ob_get_level()) ob_end_clean(); header('Content-Type: text/plain'); header('Content-Disposition: attachment; filename="new_cards_'.date('YmdHis').'.txt"');
                 foreach ($newCodes as $code) { echo $code . "\r\n"; } exit;
@@ -155,11 +159,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch(Exception $e) { $errorMsg = $e->getMessage(); }
 }
 
-$dashboardData = ['stats'=>['total'=>0,'unused'=>0,'active'=>0], 'app_stats'=>[], 'chart_types'=>[]];
+$dashboardData = ['stats'=>['total'=>0,'unused'=>0,'active'=>0,'online'=>0], 'app_stats'=>[], 'chart_types'=>[]];
 $logs = []; $activeDevices = []; $cardList = []; $totalCards = 0; $totalPages = 0;
 try { $dashboardData = $db->getDashboardData(); $logs = $db->getUsageLogs(20, 0); $activeDevices = $db->getActiveDevices(); } catch (Throwable $e) {}
 
-$display_stats = [ 'total' => $dashboardData['stats']['total'], 'active' => $dashboardData['stats']['active'], 'apps' => count($appList), 'unused' => $dashboardData['stats']['unused'] ];
+$display_stats = [ 'total' => $dashboardData['stats']['total'], 'active' => $dashboardData['stats']['active'], 'apps' => count($appList), 'unused' => $dashboardData['stats']['unused'], 'online' => $dashboardData['stats']['online'] ];
 
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $perPage = isset($_GET['limit']) ? intval($_GET['limit']) : 20;
@@ -187,76 +191,25 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="assets/css/cards.css?v=<?= time() ?>" rel="stylesheet">
 <style>
-    /* 滑动条自定义样式 */
     input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; background: var(--border-color-input); border-radius: 3px; outline: none; transition: background 0.2s; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--color-primary); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: transform 0.1s; }
     input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
-    
-    /* 移动端底部栏圆角悬浮补丁 */
     @media (max-width: 768px) {
         body { padding-bottom: 90px !important; }
-        .m-nav {
-            bottom: 16px !important; left: 16px !important; right: 16px !important; width: auto !important;
-            border-radius: 24px !important; border-top: none !important;
-            border: 1px solid rgba(100, 100, 100, 0.1) !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
-            padding: 4px 8px !important;
-        }
+        .m-nav { bottom: 16px !important; left: 16px !important; right: 16px !important; width: auto !important; border-radius: 24px !important; border-top: none !important; border: 1px solid rgba(100, 100, 100, 0.1) !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; padding: 4px 8px !important; }
     }
-
-    /* 侧边栏增加深度阴影，提升立体感 */
-    .admin-sider {
-        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06) !important;
-        border-right: 1px solid var(--border-color) !important;
-        z-index: 50; 
-    }
+    .admin-sider { box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06) !important; border-right: 1px solid var(--border-color) !important; z-index: 50; }
 </style>
 
 <?php if ($conf_enable_bg == '1'): ?>
 <style>
-    /* 全局背景图 */
     .admin-main { position: relative; z-index: 1; }
-    .admin-main::before {
-        content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background: url('https://www.loliapi.com/acg/pc/') center/cover fixed;
-        opacity: <?= htmlspecialchars($conf_bg_img_opacity) ?>; 
-        pointer-events: none; z-index: -1;
-    }
-    
-    /* 顶部导航栏毛玻璃化 (修复割裂感) */
-    .admin-header {
-        background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important;
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
-    }
-
-    /* 毛玻璃亚克力拟物风格适配核心 */
-    .e-card, .pro-stat-card {
-        background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; 
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.6) !important;
-        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05) !important;
-    }
-
-    /* 将原本带底色的元素也转为半透明 */
-    .e-table thead, .e-table th, thead[style*="var(--bg-layout)"], div[style*="var(--bg-layout)"] {
-        background: rgba(255, 255, 255, <?= max(0, $conf_card_opacity - 0.3) ?>) !important;
-    }
-
-    /* 输入控件毛玻璃化 */
-    .e-input, .e-select, .e-textarea {
-        background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important;
-        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    }
-    
-    /* 移动端底栏的毛玻璃适配 */
-    @media (max-width: 768px) {
-        .m-nav {
-            background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important;
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.5) !important;
-        }
-    }
+    .admin-main::before { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url('https://www.loliapi.com/acg/pc/') center/cover fixed; opacity: <?= htmlspecialchars($conf_bg_img_opacity) ?>; pointer-events: none; z-index: -1; }
+    .admin-header { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important; }
+    .e-card, .pro-stat-card { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.6) !important; box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05) !important; }
+    .e-table thead, .e-table th, thead[style*="var(--bg-layout)"], div[style*="var(--bg-layout)"] { background: rgba(255, 255, 255, <?= max(0, $conf_card_opacity - 0.3) ?>) !important; }
+    .e-input, .e-select, .e-textarea { background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    @media (max-width: 768px) { .m-nav { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.5) !important; } }
 </style>
 <?php endif; ?>
 </head>
@@ -264,62 +217,42 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
 
 <div class="admin-layout">
     
-    <!-- 侧边栏 (PC端) -->
     <aside class="admin-sider">
         <div class="sider-logo">
             <img src="<?= htmlspecialchars($conf_avatar) ?>" alt="Logo">
             <div style="display: flex; flex-direction: column; justify-content: center;">
                 <span class="logo-text" style="line-height: 1.2;"><?= htmlspecialchars(mb_strimwidth($conf_site_title, 0, 10, '..')) ?></span>
-                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.7.5</span>
+                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.7.6</span>
             </div>
         </div>
         <div class="sider-menu">
             <div class="menu-group"><span>系统概览</span></div>
-            <a href="?tab=dashboard" class="menu-item <?= $tab == 'dashboard' ? 'active' : '' ?>">
-                <i class="ph ph-squares-four"></i> <span>数据总览</span>
-            </a>
+            <a href="?tab=dashboard" class="menu-item <?= $tab == 'dashboard' ? 'active' : '' ?>"> <i class="ph ph-squares-four"></i> <span>数据总览</span> </a>
             
             <div class="menu-group"><span>核心业务</span></div>
-            <a href="?tab=apps" class="menu-item <?= $tab == 'apps' ? 'active' : '' ?>">
-                <i class="ph ph-app-window"></i> <span>应用管理</span>
-            </a>
+            <a href="?tab=apps" class="menu-item <?= $tab == 'apps' ? 'active' : '' ?>"> <i class="ph ph-app-window"></i> <span>应用管理</span> </a>
 
-            <!-- 手风琴折叠菜单：卡密管理 -->
             <?php $isCardMenu = in_array($tab, ['list', 'create']); ?>
-            <div class="menu-item has-submenu <?= $isCardMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)">
-                <i class="ph ph-database"></i> <span>卡密管理</span>
-                <i class="ph ph-caret-down sub-arrow"></i>
-            </div>
+            <div class="menu-item has-submenu <?= $isCardMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)"> <i class="ph ph-database"></i> <span>卡密管理</span> <i class="ph ph-caret-down sub-arrow"></i> </div>
             <div class="sub-menu" style="<?= $isCardMenu ? 'display:block;' : 'display:none;' ?>">
                 <a href="?tab=list" class="sub-menu-item <?= $tab == 'list' ? 'active' : '' ?>">卡密库存</a>
                 <a href="?tab=create" class="sub-menu-item <?= $tab == 'create' ? 'active' : '' ?>">批量制卡</a>
             </div>
 
-            <!-- 手风琴折叠菜单：防御与监控 -->
             <?php $isSecMenu = in_array($tab, ['blacklist', 'logs']); ?>
-            <div class="menu-item has-submenu <?= $isSecMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)">
-                <i class="ph ph-shield-check"></i> <span>防御与监控</span>
-                <i class="ph ph-caret-down sub-arrow"></i>
-            </div>
+            <div class="menu-item has-submenu <?= $isSecMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)"> <i class="ph ph-shield-check"></i> <span>防御与监控</span> <i class="ph ph-caret-down sub-arrow"></i> </div>
             <div class="sub-menu" style="<?= $isSecMenu ? 'display:block;' : 'display:none;' ?>">
                 <a href="?tab=blacklist" class="sub-menu-item <?= $tab == 'blacklist' ? 'active' : '' ?>">防御与拉黑</a>
                 <a href="?tab=logs" class="sub-menu-item <?= $tab == 'logs' ? 'active' : '' ?>">访问日志</a>
             </div>
             
             <div style="margin-top: auto;"></div>
-            
             <div class="menu-group"><span>系统设置</span></div>
-            <a href="?tab=settings" class="menu-item <?= $tab == 'settings' ? 'active' : '' ?>">
-                <i class="ph ph-gear"></i> <span>全局配置</span>
-            </a>
-            
-            <a href="?logout=1" class="menu-item menu-item-danger data-no-ajax">
-                <i class="ph ph-sign-out"></i> <span>安全退出</span>
-            </a>
+            <a href="?tab=settings" class="menu-item <?= $tab == 'settings' ? 'active' : '' ?>"> <i class="ph ph-gear"></i> <span>全局配置</span> </a>
+            <a href="?logout=1" class="menu-item menu-item-danger data-no-ajax"> <i class="ph ph-sign-out"></i> <span>安全退出</span> </a>
         </div>
     </aside>
 
-    <!-- 底部导航 (移动端) -->
     <nav class="m-nav" id="mNav">
         <a href="?tab=dashboard" class="m-nav-item <?= $tab == 'dashboard' ? 'active' : '' ?>"><i class="ph ph-squares-four"></i><span>概览</span></a>
         <a href="?tab=apps" class="m-nav-item <?= $tab == 'apps' ? 'active' : '' ?>"><i class="ph ph-app-window"></i><span>应用</span></a>
@@ -328,38 +261,22 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
         <a href="?tab=settings" class="m-nav-item <?= $tab == 'settings' ? 'active' : '' ?>"><i class="ph ph-gear"></i><span>设置</span></a>
     </nav>
 
-    <!-- 主体区域 -->
     <main class="admin-main">
         <header class="admin-header">
-            <div class="header-left">
-                <button class="sider-toggle" id="siderToggle"><i class="ph ph-list"></i></button>
-            </div>
-            <div class="header-user">
-                <span><?= htmlspecialchars($currentAdminUser) ?></span>
-                <img src="<?= htmlspecialchars($conf_avatar) ?>" class="header-avatar" alt="Avatar">
-            </div>
+            <div class="header-left"><button class="sider-toggle" id="siderToggle"><i class="ph ph-list"></i></button></div>
+            <div class="header-user"><span><?= htmlspecialchars($currentAdminUser) ?></span> <img src="<?= htmlspecialchars($conf_avatar) ?>" class="header-avatar" alt="Avatar"></div>
         </header>
 
         <div class="admin-content" id="main" style="will-change: transform, opacity;">
             
             <?php if ($tab == 'dashboard'): ?>
-                <!-- 针对 Dashboard 专属的高级样式补丁 -->
                 <style>
-                    @keyframes wave { 0% {transform: rotate(0deg);} 10% {transform: rotate(14deg);} 20% {transform: rotate(-8deg);} 30% {transform: rotate(14deg);} 40% {transform: rotate(-4deg);} 50% {transform: rotate(10deg);} 60% {transform: rotate(0deg);} 100% {transform: rotate(0deg);} }
-                    .wave-emoji { display: inline-block; transform-origin: 70% 70%; animation: wave 2.5s infinite; }
-                    
-                    .pro-stat-card {
-                        position: relative; background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 20px;
-                        padding: 24px; overflow: hidden; display: flex; flex-direction: column; gap: 16px;
-                        transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-                    }
+                    .pro-stat-card { position: relative; background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 20px; padding: 24px; overflow: hidden; display: flex; flex-direction: column; gap: 16px; transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
                     .pro-stat-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.08); border-color: transparent; }
                     .pro-stat-header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
                     .pro-stat-icon-wrap { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
                     .pro-stat-value { font-size: 36px; font-weight: 700; color: var(--text-primary); line-height: 1; font-family: 'Inter', system-ui, sans-serif; letter-spacing: -1px; }
                     .pro-stat-watermark { position: absolute; right: -15px; bottom: -15px; font-size: 100px; opacity: 0.04; transform: rotate(-15deg); pointer-events: none; }
-
-                    /* 自定义公告滚动条，更纤细优雅 */
                     .notice-scroll::-webkit-scrollbar { width: 6px; }
                     .notice-scroll::-webkit-scrollbar-track { background: transparent; }
                     .notice-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
@@ -368,31 +285,28 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
 
                 <?php
                     $h = date('H');
-                    if ($h < 6) { $greeting = '凌晨好！夜深了，注意休息哦'; $emoji = '🌙'; }
-                    elseif ($h < 9) { $greeting = '早上好！今天也要全力以赴'; $emoji = '☀️'; }
-                    elseif ($h < 12) { $greeting = '上午好！新的一天元气满满'; $emoji = '☕'; }
-                    elseif ($h < 14) { $greeting = '中午好！记得按时吃午饭哦'; $emoji = '🍱'; }
-                    elseif ($h < 18) { $greeting = '下午好！喝杯茶，继续努力吧'; $emoji = '🍵'; }
-                    else { $greeting = '晚上好！愿你度过一个轻松的夜晚'; $emoji = '✨'; }
+                    if ($h < 6) { $greeting = '凌晨好！夜深了，注意休息哦'; }
+                    elseif ($h < 9) { $greeting = '早上好！今天也要全力以赴'; }
+                    elseif ($h < 12) { $greeting = '上午好！新的一天元气满满'; }
+                    elseif ($h < 14) { $greeting = '中午好！记得按时吃午饭哦'; }
+                    elseif ($h < 18) { $greeting = '下午好！喝杯茶，继续努力吧'; }
+                    else { $greeting = '晚上好！愿你度过一个轻松的夜晚'; }
                 ?>
-                <!-- 情感化欢迎语 -->
                 <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 32px;">
-                    <h2 class="page-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                        <span class="wave-emoji" style="font-size: 26px;">👋</span> <span style="font-weight: 800; letter-spacing: -0.5px;">欢迎回来</span>
-                    </h2>
-                    <span style="font-size: 14px; color: var(--text-tertiary); font-weight: 500;"><?= $emoji ?> <?= $greeting ?></span>
+                    <h2 class="page-title" style="margin: 0; display: flex; align-items: center; gap: 8px;"><span style="font-weight: 800; letter-spacing: -0.5px;">欢迎回来</span></h2>
+                    <span style="font-size: 14px; color: var(--text-tertiary); font-weight: 500;"><?= $greeting ?></span>
                 </div>
 
-                <!-- 顶级数据统计 -->
+                <!-- 加入了实时的 心跳在线 指标 -->
                 <div class="grid grid-cols-4" style="gap: 24px; margin-bottom: 32px;">
                     <div class="pro-stat-card">
-                        <i class="ph-fill ph-database pro-stat-watermark"></i>
-                        <div class="pro-stat-header"><span>总库存量</span><div class="pro-stat-icon-wrap" style="background:var(--color-primary-bg); color:var(--color-primary);"><i class="ph-fill ph-database"></i></div></div>
-                        <div class="pro-stat-value"><?= number_format($display_stats['total']) ?></div>
+                        <i class="ph-fill ph-pulse pro-stat-watermark" style="color:var(--color-primary)"></i>
+                        <div class="pro-stat-header"><span>当前在线(心跳)</span><div class="pro-stat-icon-wrap" style="background:var(--color-primary-bg); color:var(--color-primary);"><i class="ph-fill ph-pulse"></i></div></div>
+                        <div class="pro-stat-value"><?= number_format($display_stats['online']) ?> <span style="font-size: 14px; font-weight: normal; color: var(--text-tertiary);"> 人</span></div>
                     </div>
                     <div class="pro-stat-card">
                         <i class="ph-fill ph-wifi-high pro-stat-watermark"></i>
-                        <div class="pro-stat-header"><span>活跃设备</span><div class="pro-stat-icon-wrap" style="background:var(--color-success-bg); color:var(--color-success);"><i class="ph-fill ph-wifi-high"></i></div></div>
+                        <div class="pro-stat-header"><span>总授权设备</span><div class="pro-stat-icon-wrap" style="background:var(--color-success-bg); color:var(--color-success);"><i class="ph-fill ph-wifi-high"></i></div></div>
                         <div class="pro-stat-value"><?= number_format($display_stats['active']) ?></div>
                     </div>
                     <div class="pro-stat-card">
@@ -407,15 +321,10 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                     </div>
                 </div>
 
-                <!-- 下方区域重构：左右均采用弹性纵向堆叠排版 -->
                 <div class="grid grid-cols-2" style="grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 32px; align-items: start;">
-                    
-                    <!-- 左侧弹性堆叠：活跃设备 + 审计日志 -->
                     <div style="display: flex; flex-direction: column; gap: 24px; height: 100%;">
-                        
-                        <!-- 活跃设备卡片 -->
                         <div class="e-card" style="margin-bottom: 0;">
-                            <div class="e-card-header" style="font-weight: 600;">实时活跃设备</div>
+                            <div class="e-card-header" style="font-weight: 600;">活跃授权设备</div>
                             <div class="e-table-wrap">
                                 <table class="e-table">
                                     <thead style="background: var(--bg-layout);"><tr><th>所属应用</th><th>卡密</th><th>到期时间</th></tr></thead>
@@ -441,12 +350,9 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                             </div>
                         </div>
 
-                        <!-- 审计日志卡片 (新增，填充左下角空白) -->
                         <div class="e-card" style="margin-bottom: 0; flex-grow: 1; display: flex; flex-direction: column;">
                             <div class="e-card-header" style="font-weight: 600; display:flex; align-items:center; justify-content:space-between;">
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <i class="ph-fill ph-clock-counter-clockwise" style="color: var(--color-primary); font-size: 18px;"></i> 最新审计日志
-                                </div>
+                                <div style="display:flex; align-items:center; gap:8px;"> <i class="ph-fill ph-clock-counter-clockwise" style="color: var(--color-primary); font-size: 18px;"></i> 最新审计日志 </div>
                                 <a href="?tab=logs" style="font-size: 13px; color: var(--color-primary); font-weight: 400; text-decoration: none; display:flex; align-items:center; gap:4px;">查看全部 <i class="ph ph-arrow-right"></i></a>
                             </div>
                             <div class="e-table-wrap" style="flex: 1;">
@@ -474,18 +380,13 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                                 </table>
                             </div>
                         </div>
-
                     </div>
 
-                    <!-- 右侧弹性堆叠：系统公告 + 图表卡片 -->
                     <div style="display: flex; flex-direction: column; gap: 24px; height: 100%;">
-                        
-                        <!-- 重新布局后的公告卡片 -->
                         <div class="e-card" style="margin-bottom: 0; flex-shrink: 0;">
                             <div class="e-card-header" style="font-weight: 600; display:flex; align-items:center; gap:8px;">
                                 <i class="ph-fill ph-megaphone" style="color: var(--color-primary); font-size: 18px;"></i> 系统公告
                             </div>
-                            <!-- 限制最大高度并允许滚动 -->
                             <div class="notice-scroll" id="cloud-notice" style="padding: 20px; white-space: pre-wrap; line-height: 1.7; color: var(--text-secondary); font-size: 13px; max-height: 220px; overflow-y: auto;">
                                 <div style="display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-tertiary);">
                                     <i class="ph ph-spinner-gap" style="animation:spin 1s linear infinite;"></i> 正在同步云端信息...
@@ -493,7 +394,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                             </div>
                         </div>
 
-                        <!-- 图表卡片 -->
                         <div class="e-card" style="margin-bottom: 0; flex-grow: 1; display: flex; flex-direction: column;">
                             <div class="e-card-header" style="font-weight: 600;">卡密类型分布</div>
                             <div class="e-card-body flex justify-center items-center" style="flex: 1; min-height: 220px; position:relative; padding: 20px;">
@@ -508,7 +408,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </div>
 
@@ -518,10 +417,11 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
             <?php endif; ?>
 
             <?php if ($tab == 'apps'): ?>
+                <!-- 保持原有的 App 面板代码即可 -->
                 <div class="mb-4">
                     <div class="e-segmented" id="app_tabs">
                         <div class="e-segmented-item active" onclick="switchAppView('apps')">应用列表</div>
-                        <div class="e-segmented-item" onclick="switchAppView('vars')">云端变量</div>
+                        <div class="e-segmented-item" onclick="switchAppView('vars')">云端变量 (防抓包)</div>
                     </div>
                 </div>
 
@@ -566,12 +466,16 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                             </div>
                         </div>
                         <div class="e-card">
-                            <div class="e-card-header">接口信息</div>
+                            <div class="e-card-header">防抓包机制</div>
                             <div class="e-card-body">
-                                <?php $apiUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")."://".$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/')."/Verifyfile/api.php"; ?>
-                                <p style="color:var(--text-secondary); margin-bottom:10px;">客户端 API 接口地址：</p>
-                                <div class="e-input mono" style="background:var(--bg-layout); cursor:pointer;" onclick="copy('<?= $apiUrl ?>')"><?= $apiUrl ?></div>
-                                <p style="font-size:12px; color:var(--text-tertiary); margin-top:12px;">使用对应的 App Key 调用该接口进行卡密验证。</p>
+                                <p style="color:var(--text-secondary); margin-bottom:10px; font-size:13px;">全新版本建议使用 <b>防抓包重放接口</b>，不传明文 AppKey：</p>
+                                <div class="e-input mono" style="background:var(--bg-layout); font-size:12px; padding: 12px; color: var(--color-primary);">
+                                    // 客户端需传递以下 3 个安全参数：<br>
+                                    app_id = 你的应用ID <br>
+                                    timestamp = 当前秒级时间戳 <br>
+                                    sign = md5(app_id + timestamp + card_code + AppKey)
+                                </div>
+                                <p style="font-size:12px; color:var(--text-tertiary); margin-top:12px;">只要 AppKey 不在请求中，抓包者永远无法直接伪造你的验证请求。</p>
                             </div>
                         </div>
                     </div>
@@ -600,17 +504,17 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                         </div>
                     </div>
                     <div class="e-card mt-4" style="max-width: 600px;">
-                        <div class="e-card-header">添加变量</div>
+                        <div class="e-card-header">添加防破解变量</div>
                         <div class="e-card-body">
                             <form method="POST">
                                 <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="add_var" value="1">
                                 <div class="flex gap-4">
                                     <div class="e-form-item" style="flex:1;"><label class="e-label">所属应用</label><select name="var_app_id" class="e-select" required><option value="">-- 请选择 --</option><?php foreach($appList as $app): ?><option value="<?= $app['id'] ?>"><?= htmlspecialchars($app['app_name']) ?></option><?php endforeach; ?></select></div>
-                                    <div class="e-form-item" style="flex:1;"><label class="e-label">键名 (Key)</label><input type="text" name="var_key" class="e-input mono" required></div>
+                                    <div class="e-form-item" style="flex:1;"><label class="e-label">键名 (Key)</label><input type="text" name="var_key" class="e-input mono" placeholder="如 crypt_salt" required></div>
                                 </div>
-                                <div class="e-form-item"><label class="e-label">变量值</label><textarea name="var_value" class="e-textarea"></textarea></div>
+                                <div class="e-form-item"><label class="e-label">变量值</label><textarea name="var_value" class="e-textarea" placeholder="如 abc123xxx"></textarea></div>
                                 <label class="flex items-center gap-2 mb-4 cursor-pointer">
-                                    <input type="checkbox" name="var_public" value="1" style="accent-color: var(--color-primary);"> <span style="font-size:14px; color:var(--text-secondary);">设为公开变量 (客户端可见)</span>
+                                    <input type="checkbox" name="var_public" value="1" checked style="accent-color: var(--color-primary);"> <span style="font-size:14px; color:var(--text-secondary);">设为公开变量 (下发给客户端，用于动态改变加密算法盐)</span>
                                 </label>
                                 <button type="submit" class="e-btn e-btn-primary">保存变量</button>
                             </form>
@@ -782,6 +686,21 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                         </form>
                     </div>
                 </div>
+
+                <!-- ⭐ 新增：生成成功后底部的即时展示复制框 -->
+                <?php if (!empty($generatedCodesForView)): ?>
+                <div class="e-card mt-6" style="max-width: 800px; animation: fadeInUp 0.4s ease forwards;">
+                    <div class="e-card-header flex justify-between items-center">
+                        <div class="flex items-center gap-2"><i class="ph-fill ph-check-circle" style="color:var(--color-success);font-size:20px;"></i> 制卡成功 (<?= count($generatedCodesForView) ?> 张)</div>
+                        <button type="button" class="e-btn e-btn-primary" style="height:32px; padding:0 16px;" onclick="copy(document.getElementById('res_cards').value)">一键复制</button>
+                    </div>
+                    <div class="e-card-body">
+                        <textarea id="res_cards" class="e-textarea mono" rows="8" readonly style="font-size:13px; line-height:1.6; resize:vertical;"><?= implode("\n", $generatedCodesForView) ?></textarea>
+                    </div>
+                </div>
+                <style>@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}</style>
+                <?php endif; ?>
+
             <?php endif; ?>
 
             <?php if ($tab == 'blacklist'): ?>
@@ -883,7 +802,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                                 <button type="submit" data-no-ajax="true" class="e-btn e-btn-primary mt-2" style="height:38px; padding: 0 24px;">保存修改并刷新</button>
                             </form>
                             
-                            <!-- 右侧修改密码 -->
                             <div style="grid-column: span 1; padding-left: 24px; border-left: 1px dashed var(--border-color-input);">
                                 <h4 style="margin:0 0 16px 0; font-weight:600; font-size:15px; color:var(--text-primary);">修改管理员密码</h4>
                                 <form method="POST">
@@ -940,21 +858,12 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
         </div>
     </main>
 
-    <!-- 弹窗挂载点 -->
     <div id="toast-root" class="toast-container"></div>
 </div>
 
 <script>
     let _t;
-    function toast(m, t='ok'){
-        const r = document.getElementById('toast-root');
-        const d = document.createElement('div');
-        d.className = 'toast';
-        d.innerHTML = t==='error' ? '<i class="ph-fill ph-warning-circle" style="color:var(--color-error);font-size:20px;"></i> '+m : '<i class="ph-fill ph-check-circle" style="color:var(--color-success);font-size:20px;"></i> '+m;
-        r.appendChild(d);
-        setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateY(-20px) scale(0.95)'; setTimeout(()=>d.remove(), 300); }, 3000);
-    }
-    
+    function toast(m, t='ok'){ const r = document.getElementById('toast-root'); const d = document.createElement('div'); d.className = 'toast'; d.innerHTML = t==='error' ? '<i class="ph-fill ph-warning-circle" style="color:var(--color-error);font-size:20px;"></i> '+m : '<i class="ph-fill ph-check-circle" style="color:var(--color-success);font-size:20px;"></i> '+m; r.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateY(-20px) scale(0.95)'; setTimeout(()=>d.remove(), 300); }, 3000); }
     function copy(t){ if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t).then(()=>toast('复制成功')).catch(()=>fallbackCopy(t)); } else fallbackCopy(t); }
     function fallbackCopy(text) { const ta = document.createElement("textarea"); ta.value = text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.focus(); ta.select(); try{ document.execCommand('copy'); toast('复制成功'); }catch(e){ toast('复制失败','error'); } document.body.removeChild(ta); }
     
@@ -965,108 +874,37 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
     function batchSubTime(){if(document.querySelectorAll('.row-check:checked').length===0){toast('请先勾选','error');return}const h=prompt("扣除小时数","24");if(h&&!isNaN(h)){document.getElementById('subHoursInput').value=h;submitBatch('batch_sub_time')}}
     function globalCompensate(){const h=prompt("统一补偿小时数(应用于在用卡密):","12");if(h&&!isNaN(h)){const f=document.getElementById('batchForm');f.insertAdjacentHTML('beforeend',`<input type="hidden" name="global_compensate" value="1"><input type="hidden" name="comp_hours" value="${h}">`);f.submit();}}
 
-    window.switchAppView = function(v) {
-        document.querySelectorAll('#app_tabs .e-segmented-item').forEach(el=>el.classList.remove('active'));
-        event.target.classList.add('active');
-        document.getElementById('view_apps').style.display = v==='apps' ? 'block' : 'none';
-        document.getElementById('view_vars').style.display = v==='vars' ? 'block' : 'none';
-    };
-    
-    window.openAppModal = function(id, n, v, no, url, force) {
-        document.getElementById('e_app_id').value = id; document.getElementById('e_app_name').value = n;
-        document.getElementById('e_app_ver').value = v; document.getElementById('e_app_note').value = no;
-        document.getElementById('e_app_url').value = url; document.getElementById('e_app_force').checked = (force==1);
-        document.getElementById('appModal').style.display = 'flex';
-    };
-    window.openVarModal = function(id, k, v, p) {
-        document.getElementById('e_var_id').value = id; document.getElementById('e_var_key').value = k;
-        document.getElementById('e_var_val').value = v; document.getElementById('e_var_pub').checked = (p==1);
-        document.getElementById('varModal').style.display = 'flex';
-    };
+    window.switchAppView = function(v) { document.querySelectorAll('#app_tabs .e-segmented-item').forEach(el=>el.classList.remove('active')); event.target.classList.add('active'); document.getElementById('view_apps').style.display = v==='apps' ? 'block' : 'none'; document.getElementById('view_vars').style.display = v==='vars' ? 'block' : 'none'; };
+    window.openAppModal = function(id, n, v, no, url, force) { document.getElementById('e_app_id').value = id; document.getElementById('e_app_name').value = n; document.getElementById('e_app_ver').value = v; document.getElementById('e_app_note').value = no; document.getElementById('e_app_url').value = url; document.getElementById('e_app_force').checked = (force==1); document.getElementById('appModal').style.display = 'flex'; };
+    window.openVarModal = function(id, k, v, p) { document.getElementById('e_var_id').value = id; document.getElementById('e_var_key').value = k; document.getElementById('e_var_val').value = v; document.getElementById('e_var_pub').checked = (p==1); document.getElementById('varModal').style.display = 'flex'; };
+    window.toggleSubMenu = function(el) { const layout = document.querySelector('.admin-layout'); if (layout.classList.contains('sider-collapsed')) return; el.classList.toggle('submenu-open'); const subMenu = el.nextElementSibling; subMenu.style.display = subMenu.style.display === 'block' ? 'none' : 'block'; };
 
-    window.toggleSubMenu = function(el) {
-        const layout = document.querySelector('.admin-layout');
-        if (layout.classList.contains('sider-collapsed')) return;
-        el.classList.toggle('submenu-open');
-        const subMenu = el.nextElementSibling;
-        subMenu.style.display = subMenu.style.display === 'block' ? 'none' : 'block';
-    };
-
-    // ================= 核心：原生级别丝滑路由控制 (iOS 风格) =================
     let isNavigating = false;
     async function loadTab(url, isForm = false, formData = null, formMethod = 'POST') {
-        if (isNavigating && !isForm) return;
-        isNavigating = true;
-
-        if(!isForm) {
-            document.querySelectorAll('.menu-item, .sub-menu-item, .m-nav-item').forEach(el=>{ 
-                if(el.href){ 
-                    const u=new URL(el.href,window.location.href),c=new URL(url,window.location.href); 
-                    el.classList.toggle('active', u.searchParams.get('tab')===c.searchParams.get('tab')); 
-                } 
-            });
-        }
-
-        const m = document.getElementById('main');
-        m.style.transition = 'opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.4, 0, 1, 1)';
-        m.style.opacity = '0';
-        m.style.transform = 'scale(0.98)';
-
+        if (isNavigating && !isForm) return; isNavigating = true;
+        if(!isForm) { document.querySelectorAll('.menu-item, .sub-menu-item, .m-nav-item').forEach(el=>{ if(el.href){ const u=new URL(el.href,window.location.href),c=new URL(url,window.location.href); el.classList.toggle('active', u.searchParams.get('tab')===c.searchParams.get('tab')); } }); }
+        const m = document.getElementById('main'); m.style.transition = 'opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.4, 0, 1, 1)'; m.style.opacity = '0'; m.style.transform = 'scale(0.98)';
         try {
             const fetchOpts = { headers: {'X-Requested-With': 'XMLHttpRequest'} };
-            if(isForm) { fetchOpts.method = formMethod; fetchOpts.body = formData; }
-            
-            const [res] = await Promise.all([
-                fetch(url, fetchOpts),
-                new Promise(r => setTimeout(r, 150)) 
-            ]);
-            
+            if(isForm) { fetchOpts.method = formMethod; if (formData) fetchOpts.body = formData; }
+            const [res] = await Promise.all([ fetch(url, fetchOpts), new Promise(r => setTimeout(r, 150)) ]);
             if(res.redirected) { window.location.href = res.url; return; }
-            
-            const html = await res.text();
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            
-            m.style.transition = 'none';
-            m.innerHTML = doc.getElementById('main').innerHTML;
-            m.style.opacity = '0';
-            m.style.transform = 'translateY(12px) scale(1)'; 
-            
-            if(!isForm) window.history.pushState({}, '', url); 
-            initPage();
-            
-            void m.offsetHeight; 
-
-            m.style.transition = 'opacity 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)';
-            m.style.opacity = '1';
-            m.style.transform = 'translateY(0) scale(1)';
-            
-        } catch(e) {
-            toast('网络异常，正在刷新...', 'error'); 
-            window.location.href = url;
-        } finally {
-            setTimeout(() => { isNavigating = false; }, 400); 
-        }
+            const html = await res.text(); const doc = new DOMParser().parseFromString(html, 'text/html');
+            m.style.transition = 'none'; m.innerHTML = doc.getElementById('main').innerHTML; m.style.opacity = '0'; m.style.transform = 'translateY(12px) scale(1)'; 
+            if(!isForm) window.history.pushState({}, '', url); initPage(); void m.offsetHeight; 
+            m.style.transition = 'opacity 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)'; m.style.opacity = '1'; m.style.transform = 'translateY(0) scale(1)';
+        } catch(e) { toast('网络异常，正在刷新...', 'error'); window.location.href = url; } finally { setTimeout(() => { isNavigating = false; }, 400); }
     }
     
-    document.addEventListener('click', e => {
-        const link = e.target.closest('a');
-        if(link && link.href && link.href.includes('?tab=') && !link.hasAttribute('target') && !link.hasAttribute('download') && !link.classList.contains('data-no-ajax')) {
-            e.preventDefault();
-            loadTab(link.href);
-        }
-    });
-    
+    document.addEventListener('click', e => { const link = e.target.closest('a'); if(link && link.href && link.href.includes('?tab=') && !link.hasAttribute('target') && !link.hasAttribute('download') && !link.classList.contains('data-no-ajax')) { e.preventDefault(); loadTab(link.href); } });
     document.addEventListener('submit', async e => {
         if(e.target.tagName === 'FORM') {
-            const s = e.submitter; 
-            if(s && (s.name==='batch_export' || s.name==='auto_export' || s.hasAttribute('data-no-ajax')) || e.target.hasAttribute('data-no-ajax')) return;
-            e.preventDefault(); 
-            const btn = s || e.target.querySelector('button[type="submit"]'); let oT='';
+            const s = e.submitter; if(s && (s.name==='batch_export' || s.name==='auto_export' || s.hasAttribute('data-no-ajax')) || e.target.hasAttribute('data-no-ajax')) return;
+            e.preventDefault(); const btn = s || e.target.querySelector('button[type="submit"]'); let oT='';
             if(btn) { oT = btn.innerHTML; btn.innerHTML = '<i class="ph ph-spinner-gap" style="animation:spin 1s linear infinite;"></i> 处理中...'; btn.style.pointerEvents = 'none'; btn.style.opacity = '0.8'; }
-            
             const fd = new FormData(e.target); if(s && s.name && !fd.has(s.name)) fd.append(s.name, s.value);
-            await loadTab(e.target.action || window.location.href, true, fd, e.target.method || 'POST');
-            
+            let url = e.target.action || window.location.href; let method = (e.target.method || 'POST').toUpperCase();
+            if (method === 'GET') { const params = new URLSearchParams(fd); url = url.split('?')[0] + '?' + params.toString(); await loadTab(url, true, null, 'GET'); } else { await loadTab(url, true, fd, method); }
             if(btn) { btn.innerHTML = oT; btn.style.pointerEvents = 'auto'; btn.style.opacity = '1'; }
         }
     });
@@ -1086,25 +924,13 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        const adminLayout = document.querySelector('.admin-layout');
-        const siderToggle = document.getElementById('siderToggle');
+        const adminLayout = document.querySelector('.admin-layout'); const siderToggle = document.getElementById('siderToggle');
         if(localStorage.getItem('siderCollapsed') === '1') { adminLayout.classList.add('sider-collapsed'); }
-        if(siderToggle) {
-            siderToggle.addEventListener('click', () => {
-                adminLayout.classList.toggle('sider-collapsed');
-                localStorage.setItem('siderCollapsed', adminLayout.classList.contains('sider-collapsed') ? '1' : '0');
-            });
-        }
-        
-        const m = document.getElementById('main');
-        m.style.opacity = '0'; m.style.transform = 'translateY(12px) scale(1)';
-        requestAnimationFrame(() => {
-            m.style.transition = 'opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
-            m.style.opacity = '1'; m.style.transform = 'translateY(0) scale(1)';
-        });
+        if(siderToggle) { siderToggle.addEventListener('click', () => { adminLayout.classList.toggle('sider-collapsed'); localStorage.setItem('siderCollapsed', adminLayout.classList.contains('sider-collapsed') ? '1' : '0'); }); }
+        const m = document.getElementById('main'); m.style.opacity = '0'; m.style.transform = 'translateY(12px) scale(1)';
+        requestAnimationFrame(() => { m.style.transition = 'opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)'; m.style.opacity = '1'; m.style.transform = 'translateY(0) scale(1)'; });
         initPage();
     });
-    
     window.addEventListener('popstate', () => loadTab(window.location.href));
 </script>
 <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>

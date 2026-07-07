@@ -1,0 +1,90 @@
+
+#### 1. 客户端请求参数变更
+以前你们是直接传 `app_key`，现在改为传以下 4 个参数：
+*   `app_id`：你的应用 ID（在后台应用管理列表看，纯数字）
+*   `timestamp`：当前的 10 位 Unix 时间戳（秒）
+*   `card_code`：用户输入的卡密
+*   `sign`：小写的 MD5 签名结果
+
+#### 2. Sign 签名算法
+签名的拼接规则是**直接将四个变量转为字符串无缝拼接，然后取 MD5**：
+`sign = md5(app_id + timestamp + card_code + app_key)`
+
+#### 3. 客户端防抓包防重放校验（双向安全）
+我的接口现在返回的 JSON 里，都会带一个 `timestamp`（服务器当前时间）。
+你客户端在拿到解密后的 JSON 时，**务必加一个判断**：
+`当前客户端时间 - 返回的 timestamp`，如果误差绝对值 **大于 60秒**，直接弹窗提示“网络异常或被抓包篡改”，然后闪退！这样 HttpCanary 这种工具的“重放功能”就彻底废了。
+
+#### 4. 在线心跳维持
+后台新增了 5 分钟精准实时在线人数。客户端只需要**每隔 3~5 分钟**，用同样的参数（更新 timestamp 和 sign）重新请求一次 `api.php`（不影响扣时），后台就会自动刷新在线状态。
+
+---
+
+### 各语言对接代码示例：
+
+**【Java / 安卓端代码示例】**
+```java
+long timestamp = System.currentTimeMillis() / 1000; // 10位时间戳
+String appId = "1"; // 你的应用ID
+String appKey = "你的AppKey(藏在代码里不要发出去)";
+String cardCode = "VIP-123456"; // 卡密
+
+// 1. 拼接字符串 (注意不要加任何空格或符号)
+String rawData = appId + timestamp + cardCode + appKey;
+
+// 2. 计算 MD5
+String sign = getMD5(rawData).toLowerCase();
+
+// 3. 构建你要发送的 JSON 或 POST 表单
+// {
+//    "app_id": 1,
+//    "timestamp": timestamp,
+//    "card_code": cardCode,
+//    "sign": sign,
+//    "device_hash": "设备的机器码"
+// }
+```
+
+**【Python 脚本端代码示例】**
+```python
+import time
+import hashlib
+import requests
+
+timestamp = int(time.time())
+app_id = "1"
+app_key = "你的AppKey"
+card_code = "VIP-123456"
+
+# 1. 直接拼接拼成字符串
+raw_str = f"{app_id}{timestamp}{card_code}{app_key}"
+
+# 2. 生成 MD5 签名
+sign = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
+
+# 3. 发送请求
+payload = {
+    "app_id": app_id,
+    "timestamp": timestamp,
+    "card_code": card_code,
+    "sign": sign,
+    "device_hash": "Machine_Mac_Address"
+}
+# requests.post("http://你的域名/api.php", json=payload)
+```
+
+**【易语言代码思路】**
+```易语言
+时间戳 ＝ 取时间戳()  // 记得取10位秒级
+拼接文本 ＝ 到文本(应用ID) ＋ 到文本(时间戳) ＋ 卡密 ＋ AppKey
+Sign ＝ 取数据摘要 (到字节集 (拼接文本)) // 易语言自带的MD5就是取数据摘要
+// 然后把 应用ID、时间戳、卡密、Sign 提交给接口即可。
+```
+
+---
+
+###  顺便说下动态换盐（可选）
+如果你们开启了 API 加密，并且想做**动态加密盐**：
+1. 我在后台【云端变量】里新建了一个公开变量，比如 `crypt_salt = abc123xxx`
+2. 你们客户端启动时，先不传卡密，只传 `app_id`、`timestamp`、`sign` 调用一次接口，可以拿到我下发的 `variables` 数组。
+3. 你们读取里面的 `crypt_salt`，用这个作为接下来 AES 加密的密码。如果以后有破解版流出，我后台把 `crypt_salt` 一改，所有旧版本直接全盘瘫痪！
