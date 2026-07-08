@@ -1,11 +1,10 @@
 <?php
-// api.php
 require_once '../config.php';
 require_once '../database.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-// --- 并发安全的频率限制 ---
+// --- 并发安全的频率限制 (通过 LOCK_EX 优化控制) ---
 $rate_ip = $_SERVER['REMOTE_ADDR'];
 $rate_file = sys_get_temp_dir() . '/rate_' . md5($rate_ip);
 $current_minute = date('Hi');
@@ -14,7 +13,7 @@ $rate_data = @json_decode(@file_get_contents($rate_file), true);
 if (is_array($rate_data) && isset($rate_data['time']) && $rate_data['time'] == $current_minute) {
     if ($rate_data['count'] > 60) {
         http_response_code(429);
-        die(json_encode(['code' => 429, 'msg' => 'Too Many Requests - 请稍后重试', 'timestamp' => time()]));
+        die(json_encode(['code' => 429, 'msg' => 'Too Many Requests - 请稍后重试']));
     }
     $rate_data['count']++;
 } else {
@@ -32,11 +31,10 @@ try {
     $api_encrypt_enabled = $sysConf['api_encrypt'] ?? '1';
 } catch (Exception $e) { }
 
-// --- [AES-256-GCM 输出封装函数] 增加了响应的 timestamp ---
+// --- [AES-256-GCM 输出封装函数] ---
 function output_json($code, $msg, $data = null, $encryptKey = null) {
     global $api_encrypt_enabled;
-    // ⭐ 服务端响应带上时间戳，方便客户端校验是否为被拦截的旧响应
-    $response = ['code' => $code, 'msg' => $msg, 'data' => $data, 'timestamp' => time()];
+    $response = ['code' => $code, 'msg' => $msg, 'data' => $data];
     $json = json_encode($response, JSON_UNESCAPED_UNICODE);
 
     if ($api_encrypt_enabled === '1' && $encryptKey && strlen($encryptKey) === 64 && function_exists('openssl_encrypt')) {
@@ -63,71 +61,40 @@ if (is_array($data)) {
     $data = array_merge($_GET, $_POST);
 }
 
-// 接收各项核心参数
 $card_code   = !empty($data['card_code']) ? trim($data['card_code']) : (isset($data['card']) ? trim($data['card']) : '');
+$app_key     = isset($data['app_key']) ? trim($data['app_key']) : '';
 $device      = !empty($data['device_hash']) ? trim($data['device_hash']) : (isset($data['device']) ? trim($data['device']) : '');
 $action      = isset($data['action']) ? $data['action'] : 'verify';
 $custom_data = isset($data['custom_data']) ? trim($data['custom_data']) : null;
 
-// ⭐ 新增：防抓包与防重放核心参数
-$app_id      = isset($data['app_id']) ? intval($data['app_id']) : 0;
-$timestamp   = isset($data['timestamp']) ? intval($data['timestamp']) : 0;
-$sign        = isset($data['sign']) ? trim($data['sign']) : '';
-$app_key     = isset($data['app_key']) ? trim($data['app_key']) : ''; 
-
 try {
-    if (!$db) throw new Exception("数据库连接失败");
-
-    // ==========================================
-    // ⭐ [安全增强] 防抓包签名验证 & 防重放时间戳验证
-    // ==========================================
-    if ($app_id > 0 && !empty($sign) && $timestamp > 0) {
-        // 1. 防重放攻击：误差不得超过 60 秒
-        if (abs(time() - $timestamp) > 60) {
-            output_json(403, '请求异常：请求已过期，疑似重放攻击！');
-        }
-
-        // 2. 根据 app_id 获取数据库中真实的 app_key
-        $appInfoStmt = $db->pdo->prepare("SELECT * FROM applications WHERE id = ?");
-        $appInfoStmt->execute([$app_id]);
-        $appInfo = $appInfoStmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$appInfo || $appInfo['status'] == 0) {
-            output_json(403, '验证失败：应用ID不存在或已被禁用');
-        }
-
-        // 3. 服务端计算签名并对比。客户端算法：md5(app_id + timestamp + card_code + app_key)
-        $real_app_key = $appInfo['app_key'];
-        $calc_sign = md5($app_id . $timestamp . $card_code . $real_app_key);
-        
-        if (strtolower($sign) !== strtolower($calc_sign)) {
-            output_json(403, '安全拦截：数据签名校验失败，请求可能已被篡改！');
-        }
-
-        // 校验通过，赋值以便向下兼容旧的后续逻辑
-        $app_key = $real_app_key;
-    } 
-    // 向下兼容：如果客户端依然传了明文的 app_key
-    elseif (empty($app_key) && !in_array($action, ['generate', 'ban', 'unban', 'del_card', 'kick'])) {
-        output_json(400, '请求遭拒：缺少必要的鉴权参数 (推荐使用 app_id + sign 签名防抓包机制)');
+    if (!$db) {
+        throw new Exception("数据库连接失败");
     }
 
-
     // ==========================================
-    // 发卡网/管理端 API 接口
+    // ⭐ [新增] 管理端 API / 发卡网对接接口
     // ==========================================
     if (in_array($action, ['generate', 'ban', 'unban', 'del_card', 'kick'])) {
         $api_token = isset($data['api_token']) ? trim($data['api_token']) : '';
+        
+        // ----------------------------------------------------
+        // ⭐【请注意】您的专属管理员对接通信密钥在这里修改！
+        // ----------------------------------------------------
         $admin_api_token = 'GuYiAdmin123'; 
-        if ($api_token !== $admin_api_token) output_json(403, '无权操作：对接通信密钥错误！');
+        
+        if ($api_token !== $admin_api_token) {
+            output_json(403, '无权操作：对接通信密钥(api_token)错误或未提供！');
+        }
 
+        // 1. 批量/单张生成卡密
         if ($action === 'generate') {
-            $genAppId = isset($data['app_id']) ? intval($data['app_id']) : 0;
-            if ($genAppId <= 0 && !empty($app_key)) {
-                $ai = $db->getAppIdByKey($app_key);
-                if ($ai) $genAppId = $ai['id'];
+            $appId = isset($data['app_id']) ? intval($data['app_id']) : 0;
+            if ($appId <= 0 && !empty($app_key)) {
+                $appInfo = $db->getAppIdByKey($app_key);
+                if ($appInfo) $appId = $appInfo['id'];
             }
-            if ($genAppId <= 0) output_json(400, '生成失败：请提供有效的 app_id');
+            if ($appId <= 0) output_json(400, '生成失败：请提供有效的 app_id 或 app_key');
             
             $type = isset($data['type']) ? $data['type'] : 'day';
             $num = isset($data['num']) ? intval($data['num']) : 1;
@@ -136,21 +103,37 @@ try {
             $customHours = isset($data['custom_hours']) ? floatval($data['custom_hours']) : 0;
             
             try {
-                $newCodes = $db->generateCards($num, $type, $pre, '', 16, $note, $genAppId, intval($customHours * 3600));
-                output_json(200, "成功生成 {$num} 张卡密", ['cards' => $newCodes, 'card_string' => implode("\n", $newCodes)]);
-            } catch (Exception $e) { output_json(500, '生成失败: ' . $e->getMessage()); }
+                $newCodes = $db->generateCards($num, $type, $pre, '', 16, $note, $appId, intval($customHours * 3600));
+                $cardStr = implode("\n", $newCodes); 
+                output_json(200, "成功生成 {$num} 张卡密", ['cards' => $newCodes, 'card_string' => $cardStr]);
+            } catch (Exception $e) {
+                output_json(500, '生成失败: ' . $e->getMessage());
+            }
         }
         
+        // 2. 封禁 / 解封 / 彻底删除 / 无损踢下线
         if (in_array($action, ['ban', 'unban', 'del_card', 'kick'])) {
-            if (empty($card_code)) output_json(400, '缺少操作卡密参数');
-            $stmt = $db->pdo->prepare("SELECT id FROM cards WHERE card_code = ?");
-            $stmt->execute([$card_code]); $c = $stmt->fetch();
-            if (!$c) output_json(404, '该卡密不存在');
+            if (empty($card_code)) output_json(400, '缺少要操作的卡密(card_code)参数');
             
-            if ($action === 'ban') { $db->updateCardStatus($c['id'], 2); output_json(200, '卡密封禁成功'); } 
-            elseif ($action === 'unban') { $db->updateCardStatus($c['id'], 1); output_json(200, '卡密解封成功'); } 
-            elseif ($action === 'del_card') { $db->deleteCard($c['id']); output_json(200, '卡密删除成功'); } 
-            elseif ($action === 'kick') { $db->resetDeviceBindingByCardId($c['id']); output_json(200, '强制下线解绑成功'); }
+            $stmt = $db->pdo->prepare("SELECT id FROM cards WHERE card_code = ?");
+            $stmt->execute([$card_code]);
+            $c = $stmt->fetch();
+            if (!$c) output_json(404, '该卡密不存在于数据库中');
+            
+            if ($action === 'ban') {
+                $db->updateCardStatus($c['id'], 2);
+                output_json(200, '卡密已成功封禁');
+            } elseif ($action === 'unban') {
+                $db->updateCardStatus($c['id'], 1);
+                output_json(200, '卡密已解除封禁，恢复正常');
+            } elseif ($action === 'del_card') {
+                $db->deleteCard($c['id']);
+                output_json(200, '卡密已成功彻底删除');
+            } elseif ($action === 'kick') {
+                // 老板特权：强制踢下线并清除设备绑定（不扣时间）
+                $db->resetDeviceBindingByCardId($c['id']);
+                output_json(200, '卡密已强制踢下线并成功解绑设备');
+            }
         }
     }
     // ==========================================
@@ -161,24 +144,36 @@ try {
             try {
                 $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('device', ?, ?)")->execute([$device, $reason]);
                 $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('ip', ?, ?)")->execute([$rate_ip, $reason]);
-                output_json(200, '拉黑成功', null);
-            } catch(Exception $e) { output_json(500, '封禁执行失败'); }
+                output_json(200, '设备与所在IP已被系统成功拉黑', null);
+            } catch(Exception $e) {
+                output_json(500, '封禁执行失败');
+            }
         }
-        output_json(400, '未提供特征码(device_hash)');
+        output_json(400, '未提供需要拉黑的设备特征码(device_hash)');
     }
 
     if ($action === 'unbind') {
-        if (empty($card_code)) output_json(400, '解绑必须提供卡密(card_code)');
-        if ($db->unbindCardByApi($card_code)) output_json(200, '解绑成功(已扣除使用寿命)', null);
-        else output_json(400, '解绑失败：卡密错误或未激活', null);
+        if (empty($card_code)) output_json(400, '解绑失败：必须提供卡密(card_code)');
+        $res = $db->unbindCardByApi($card_code);
+        if ($res) {
+            output_json(200, '解绑成功，作为代价已扣除 12 小时使用寿命', null);
+        } else {
+            output_json(400, '解绑失败：卡密错误、不存在或尚未激活', null);
+        }
     }
 
     $appInfo = null;
     $updateData = null;
     if (!empty($app_key)) {
         $appInfo = $db->getAppIdByKey($app_key);
-        if (!$appInfo) output_json(403, 'AppKey 无效');
-        $updateData = ['version' => $appInfo['app_version'], 'url' => $appInfo['update_url'], 'log' => $appInfo['notes'], 'force' => (int)$appInfo['force_update']];
+        if (!$appInfo) output_json(403, 'AppKey 错误或不存在');
+        
+        $updateData = [
+            'version' => $appInfo['app_version'],
+            'url' => $appInfo['update_url'],
+            'log' => $appInfo['notes'],
+            'force' => (int)$appInfo['force_update']
+        ];
     }
 
     if (empty($card_code) && !empty($app_key)) {
@@ -200,7 +195,6 @@ try {
         output_json(200, 'OK', ['expire_time' => '2099-12-31 23:59:59', 'update' => $updateData, 'variables' => $variables], $app_key);
     }
     
-    // 心跳也会走这里，verifyCard 内已更新了 last_active_time
     $result = $db->verifyCard($card_code, $device, $app_key, $custom_data);
     
     if ($result['success']) {
