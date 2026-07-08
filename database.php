@@ -32,10 +32,13 @@ if (!class_exists('Database')) {
                 id INT AUTO_INCREMENT PRIMARY KEY, 
                 app_name VARCHAR(100) NOT NULL UNIQUE, 
                 app_key VARCHAR(64) NOT NULL UNIQUE, 
+                api_secret VARCHAR(64) DEFAULT '', 
                 app_version VARCHAR(32) DEFAULT '', 
                 status TINYINT DEFAULT 1, 
                 create_time DATETIME DEFAULT CURRENT_TIMESTAMP, 
-                notes TEXT
+                notes TEXT,
+                update_url VARCHAR(255) DEFAULT '',
+                force_update TINYINT DEFAULT 0
             ) $tableOptions");
             
             $this->pdo->exec("CREATE TABLE IF NOT EXISTS app_variables (
@@ -59,6 +62,8 @@ if (!class_exists('Database')) {
                 create_time DATETIME DEFAULT CURRENT_TIMESTAMP, 
                 notes TEXT, 
                 app_id INT DEFAULT 0, 
+                custom_data TEXT,
+                duration INT DEFAULT 0,
                 INDEX idx_card_app (app_id), 
                 INDEX idx_card_hash (device_hash)
             ) $tableOptions");
@@ -85,6 +90,7 @@ if (!class_exists('Database')) {
                 expire_time DATETIME NOT NULL, 
                 status TINYINT DEFAULT 1, 
                 app_id INT DEFAULT 0, 
+                last_heartbeat DATETIME NULL DEFAULT NULL,
                 INDEX idx_dev_hash (device_hash), 
                 INDEX idx_dev_expire (expire_time)
             ) $tableOptions");
@@ -114,6 +120,18 @@ if (!class_exists('Database')) {
             }
 
             try {
+                // 动态修补新字段，兼容老版本
+                $checkSecret = $this->pdo->query("SHOW COLUMNS FROM `applications` LIKE 'api_secret'");
+                if ($checkSecret->rowCount() == 0) {
+                    $this->pdo->exec("ALTER TABLE `applications` ADD `api_secret` VARCHAR(64) DEFAULT ''");
+                    $this->pdo->exec("UPDATE `applications` SET `api_secret` = `app_key` WHERE `api_secret` = ''");
+                }
+                
+                $checkHeartbeat = $this->pdo->query("SHOW COLUMNS FROM `active_devices` LIKE 'last_heartbeat'");
+                if ($checkHeartbeat->rowCount() == 0) {
+                    $this->pdo->exec("ALTER TABLE `active_devices` ADD `last_heartbeat` DATETIME NULL DEFAULT NULL");
+                }
+
                 $checkCards = $this->pdo->query("SHOW COLUMNS FROM `cards` LIKE 'app_id'");
                 if ($checkCards->rowCount() == 0) {
                     $this->pdo->exec("ALTER TABLE `cards` ADD `app_id` INT DEFAULT 0");
@@ -132,7 +150,6 @@ if (!class_exists('Database')) {
                     $this->pdo->exec("ALTER TABLE `applications` ADD `update_url` VARCHAR(255) DEFAULT ''");
                     $this->pdo->exec("ALTER TABLE `applications` ADD `force_update` TINYINT DEFAULT 0");
                 }
-                // 修补自定义时间与自定义字段
                 $checkCustom = $this->pdo->query("SHOW COLUMNS FROM `cards` LIKE 'custom_data'");
                 if ($checkCustom->rowCount() == 0) {
                     $this->pdo->exec("ALTER TABLE `cards` ADD `custom_data` TEXT");
@@ -167,9 +184,15 @@ if (!class_exists('Database')) {
 
         public function createApp($name, $version = '', $notes = '') {
             $appKey = bin2hex(random_bytes(32));
-            $stmt = $this->pdo->prepare("INSERT INTO applications (app_name, app_key, app_version, notes) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$name, $appKey, $version, $notes]);
+            $apiSecret = bin2hex(random_bytes(32)); 
+            $stmt = $this->pdo->prepare("INSERT INTO applications (app_name, app_key, api_secret, app_version, notes) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$name, $appKey, $apiSecret, $version, $notes]);
             return $appKey;
+        }
+
+        public function resetAppSecret($id) {
+            $secret = bin2hex(random_bytes(32));
+            $this->pdo->prepare("UPDATE applications SET api_secret = ? WHERE id = ?")->execute([$secret, $id]);
         }
 
         public function updateApp($id, $name, $version, $notes, $updateUrl = '', $forceUpdate = 0) {
@@ -227,7 +250,7 @@ if (!class_exists('Database')) {
         }
         
         public function getAppIdByKey($appKey) {
-            $stmt = $this->pdo->prepare("SELECT id, status, app_name, app_version, notes, update_url, force_update FROM applications WHERE app_key = ?");
+            $stmt = $this->pdo->prepare("SELECT id, status, app_name, app_version, notes, update_url, force_update, api_secret FROM applications WHERE app_key = ?");
             $stmt->execute([$appKey]);
             return $stmt->fetch(PDO::FETCH_ASSOC);
         }
@@ -251,7 +274,7 @@ if (!class_exists('Database')) {
             if (empty($appKey)) return ['success' => false, 'message' => '鉴权失败：未提供AppKey'];
 
             $app = $this->getAppIdByKey($appKey);
-            if (!$app) return ['success' => false, 'message' => '应用密钥无效'];
+            if (!$app) return ['success' => false, 'message' => '应用身份标识无效'];
             if ($app['status'] == 0) return ['success' => false, 'message' => '应用已被禁用'];
             
             $currentAppId = $app['id'];
@@ -261,7 +284,6 @@ if (!class_exists('Database')) {
             $deviceStmt->execute([$deviceHash, $currentAppId]);
             $activeInfo = $deviceStmt->fetch(PDO::FETCH_ASSOC);
 
-            // 如果已经在此设备激活且未过期
             if ($activeInfo) {
                 if ($activeInfo['card_code'] === $cardCode) {
                     $cardCheck = $this->pdo->prepare("SELECT id, status, custom_data FROM cards WHERE card_code = ?");
@@ -276,11 +298,13 @@ if (!class_exists('Database')) {
                         return ['success' => false, 'message' => '此卡密已被管理员封禁'];
                     }
                     
-                    // 如果客户端传了新数据，更新 custom_data
                     if ($customData !== null && $customData !== '') {
                         $this->pdo->prepare("UPDATE cards SET custom_data=? WHERE id=?")->execute([$customData, $cardRow['id']]);
                         $cardRow['custom_data'] = $customData;
                     }
+
+                    // 刷新心跳
+                    $this->pdo->prepare("UPDATE active_devices SET last_heartbeat=NOW() WHERE id=?")->execute([$activeInfo['id']]);
 
                     $this->logUsage($activeInfo['card_code'], $activeInfo['card_type'], $deviceHash, $ip, $ua, '设备活跃', $appNameForLog);
                     return ['success' => true, 'message' => '设备已激活', 'expire_time' => $activeInfo['expire_time'], 'app_id' => $currentAppId, 'custom_data' => $cardRow['custom_data']];
@@ -305,10 +329,9 @@ if (!class_exists('Database')) {
                     $this->pdo->prepare("UPDATE cards SET device_hash=? WHERE id=?")->execute([$deviceHash, $card['id']]);
                 }
                 
-                $this->pdo->prepare("REPLACE INTO active_devices (device_hash, card_code, card_type, expire_time, status, app_id) VALUES (?, ?, ?, ?, 1, ?)")->execute([$deviceHash, $cardCode, $card['card_type'], $card['expire_time'], $currentAppId]);
+                $this->pdo->prepare("REPLACE INTO active_devices (device_hash, card_code, card_type, expire_time, status, app_id, last_heartbeat) VALUES (?, ?, ?, ?, 1, ?, NOW())")->execute([$deviceHash, $cardCode, $card['card_type'], $card['expire_time'], $currentAppId]);
                 return ['success' => true, 'message' => '验证通过', 'expire_time' => $card['expire_time'], 'app_id' => $currentAppId, 'custom_data' => $card['custom_data']];
             } else {
-                // 首次激活，优先取独立 duration
                 $duration = ($card['duration'] > 0) ? $card['duration'] : (CARD_TYPES[$card['card_type']]['duration'] ?? 86400);
                 $newCustomData = ($customData !== null && $customData !== '') ? $customData : $card['custom_data'];
                 
@@ -318,13 +341,12 @@ if (!class_exists('Database')) {
                 $newExpStmt->execute([$card['id']]);
                 $expireTime = $newExpStmt->fetchColumn();
 
-                $this->pdo->prepare("INSERT INTO active_devices (device_hash, card_code, card_type, expire_time, status, app_id) VALUES (?, ?, ?, ?, 1, ?)")->execute([$deviceHash, $cardCode, $card['card_type'], $expireTime, $currentAppId]);
+                $this->pdo->prepare("INSERT INTO active_devices (device_hash, card_code, card_type, expire_time, status, app_id, last_heartbeat) VALUES (?, ?, ?, ?, 1, ?, NOW())")->execute([$deviceHash, $cardCode, $card['card_type'], $expireTime, $currentAppId]);
                 $this->logUsage($cardCode, $card['card_type'], $deviceHash, $ip, $ua, '激活成功', $appNameForLog);
                 return ['success' => true, 'message' => '首次激活成功', 'expire_time' => $expireTime, 'app_id' => $currentAppId, 'custom_data' => $newCustomData];
             }
         }
 
-        // --- 预留客户端 API：扣时解绑 ---
         public function unbindCardByApi($cardCode) {
             $this->pdo->beginTransaction();
             try {
@@ -333,7 +355,6 @@ if (!class_exists('Database')) {
                 $card = $stmt->fetch(PDO::FETCH_ASSOC);
                 if (!$card) { $this->pdo->rollBack(); return false; }
                 
-                // 强制扣减 12 小时 (43200秒) 并清除绑定状态
                 $this->pdo->prepare("UPDATE cards SET device_hash = NULL, expire_time = DATE_SUB(expire_time, INTERVAL 12 HOUR) WHERE id = ?")->execute([$card['id']]);
                 $this->pdo->prepare("DELETE FROM active_devices WHERE card_code = ?")->execute([$cardCode]);
                 
@@ -450,7 +471,6 @@ if (!class_exists('Database')) {
             } catch (Exception $e) { $this->pdo->rollBack(); return 0; } 
         }
 
-        // --- 全局补偿加时 ---
         public function globalCompensate($hours, $appId = null) {
             $seconds = intval($hours * 3600);
             $sql = "UPDATE cards SET expire_time = DATE_ADD(expire_time, INTERVAL {$seconds} SECOND) WHERE status = 1 AND expire_time > NOW()";
@@ -488,9 +508,10 @@ if (!class_exists('Database')) {
             $unused = $this->pdo->query("SELECT COUNT(*) FROM cards WHERE status = 0 AND app_id > 0")->fetchColumn(); 
             $used = $this->pdo->query("SELECT COUNT(*) FROM cards WHERE status = 1 AND app_id > 0")->fetchColumn(); 
             $active = $this->pdo->query("SELECT COUNT(*) FROM active_devices WHERE status = 1 AND expire_time > NOW() AND app_id > 0")->fetchColumn(); 
+            $online = $this->pdo->query("SELECT COUNT(*) FROM active_devices WHERE status = 1 AND expire_time > NOW() AND last_heartbeat >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) AND app_id > 0")->fetchColumn(); 
             $types = $this->pdo->query("SELECT card_type, COUNT(*) as count FROM cards WHERE app_id > 0 GROUP BY card_type")->fetchAll(PDO::FETCH_KEY_PAIR); 
             $appStats = $this->pdo->query("SELECT T2.app_name, COUNT(T1.id) as count FROM cards T1 JOIN applications T2 ON T1.app_id = T2.id WHERE T1.app_id > 0 GROUP BY T1.app_id ORDER BY count DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC); 
-            return ['stats' => ['total' => $total, 'unused' => $unused, 'used' => $used, 'active' => $active], 'chart_types' => $types, 'app_stats' => $appStats]; 
+            return ['stats' => ['total' => $total, 'unused' => $unused, 'used' => $used, 'active' => $active, 'online' => $online], 'chart_types' => $types, 'app_stats' => $appStats]; 
         }
         
         public function getTotalCardCount($statusFilter = null, $appId = null, $typeFilter = null) {
@@ -511,7 +532,6 @@ if (!class_exists('Database')) {
             if ($appId !== null) $sql .= "AND T1.app_id = :app_id ";
             if ($typeFilter !== null) $sql .= "AND T1.card_type = :type ";
             
-            // 排序支持
             if ($sort === 'expire_asc') $orderBy = "T1.expire_time ASC";
             elseif ($sort === 'expire_desc') $orderBy = "T1.expire_time DESC";
             else $orderBy = "T1.create_time DESC";
@@ -539,7 +559,6 @@ if (!class_exists('Database')) {
         public function getUsageLogs($l, $o) { $q=$this->pdo->prepare("SELECT * FROM usage_logs ORDER BY access_time DESC LIMIT ? OFFSET ?"); $q->bindValue(1,$l,PDO::PARAM_INT); $q->bindValue(2,$o,PDO::PARAM_INT); $q->execute(); return $q->fetchAll(PDO::FETCH_ASSOC); }
         public function getActiveDevices() { return $this->pdo->query("SELECT T1.*, T2.app_name FROM active_devices T1 JOIN applications T2 ON T1.app_id = T2.id WHERE T1.status=1 AND T1.expire_time > NOW() AND T1.app_id > 0 ORDER BY T1.activate_time DESC")->fetchAll(PDO::FETCH_ASSOC); }
         
-        // 支持传入自定义时间 $customDuration
         public function generateCards($count, $type, $pre, $suf, $len, $note, $appId, $customDuration = 0) { 
             if(empty($appId) || $appId <= 0) throw new Exception("必须指定有效的应用 ID");
             $this->pdo->beginTransaction(); 
@@ -576,37 +595,28 @@ if (!class_exists('Database')) {
             return $str;
         }
 
-        // 优化：流式导出数据，直接写入标准输出流，内存占用极小
         public function exportAllDataStream($out) {
             $tables = ['applications', 'app_variables', 'cards', 'active_devices', 'usage_logs', 'blacklists', 'system_settings', 'admin'];
             fwrite($out, '{');
             $firstTable = true;
             foreach ($tables as $table) {
-                if (!$firstTable) {
-                    fwrite($out, ',');
-                }
+                if (!$firstTable) { fwrite($out, ','); }
                 $firstTable = false;
                 fwrite($out, '"' . $table . '":[');
-                
                 try {
                     $stmt = $this->pdo->query("SELECT * FROM `{$table}`");
                     $firstRow = true;
                     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                        if (!$firstRow) {
-                            fwrite($out, ',');
-                        }
+                        if (!$firstRow) { fwrite($out, ','); }
                         $firstRow = false;
                         fwrite($out, json_encode($row, JSON_UNESCAPED_UNICODE));
                     }
-                } catch (Exception $e) {
-                    // 出错时输出空数组
-                }
+                } catch (Exception $e) { }
                 fwrite($out, ']');
             }
             fwrite($out, '}');
         }
 
-        // 优化：分批插单 (Batch Insert)，极大提高导入速度
         public function importAllData($data) {
             $tables = ['applications', 'app_variables', 'cards', 'active_devices', 'usage_logs', 'blacklists', 'system_settings', 'admin'];
             $this->pdo->beginTransaction();
@@ -618,8 +628,6 @@ if (!class_exists('Database')) {
                         if (!empty($data[$table])) {
                             $columns = array_keys($data[$table][0]);
                             $colStr = implode(',', array_map(function($c){ return "`$c`"; }, $columns));
-                            
-                            // 分批次插入，每批500条
                             $chunks = array_chunk($data[$table], 500);
                             foreach ($chunks as $chunk) {
                                 $valuePlaceholders = [];

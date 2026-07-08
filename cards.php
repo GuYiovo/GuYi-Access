@@ -65,7 +65,6 @@ $conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : bas
 $conf_api_encrypt = $sysConf['api_encrypt'] ?? '1';
 $conf_enable_bg = $sysConf['enable_bg_image'] ?? '0';
 
-// 背景与卡片透明度配置
 $conf_bg_img_opacity = isset($sysConf['bg_img_opacity']) ? floatval($sysConf['bg_img_opacity']) : 0.2;
 $conf_card_opacity = isset($sysConf['card_opacity']) ? floatval($sysConf['card_opacity']) : 0.7;
 
@@ -78,9 +77,10 @@ if($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['batch_export'])) {
 }
 
 $tab = $_GET['tab'] ?? 'dashboard';
-$pageTitles = ['dashboard'=>'数据总览','apps'=>'应用管理','list'=>'卡密库存','create'=>'批量制卡','blacklist'=>'防御与拉黑','logs'=>'访问日志','settings'=>'系统配置','about'=>'关于'];
+$pageTitles = ['dashboard'=>'数据总览','apps'=>'应用管理','list'=>'卡密库存','create'=>'批量制卡','blacklist'=>'防御与拉黑','logs'=>'访问日志','settings'=>'系统配置','about'=>'关于作者'];
 $currentTitle = $pageTitles[$tab] ?? '控制台';
 $msg = ''; $errorMsg = ''; 
+$generatedCardsText = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCSRF();
@@ -95,6 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $appName = trim($_POST['app_name']); if (empty($appName)) throw new Exception("应用名称不能为空");
             $db->updateApp(intval($_POST['app_id']), htmlspecialchars($appName), htmlspecialchars($_POST['app_version'] ?? ''), htmlspecialchars($_POST['app_notes']), htmlspecialchars($_POST['update_url'] ?? ''), isset($_POST['force_update']) ? 1 : 0);
             $msg = "信息已更新"; $appList = $db->getApps();
+        } elseif (isset($_POST['reset_secret'])) {
+            $db->resetAppSecret(intval($_POST['app_id']));
+            $msg = "通讯加密密钥 (API Secret) 已重置"; $appList = $db->getApps();
         } elseif (isset($_POST['add_var'])) {
             $varKey = trim($_POST['var_key']); if (empty($varKey)) throw new Exception("变量名不能为空");
             $db->addAppVariable(intval($_POST['var_app_id']), htmlspecialchars($varKey), htmlspecialchars(trim($_POST['var_value'])), isset($_POST['var_public']) ? 1 : 0);
@@ -115,9 +118,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $type = $_POST['type']; $customHours = ($type === 'custom') ? floatval($_POST['custom_hours']) : 0;
             if ($type === 'custom' && $customHours <= 0) throw new Exception("时间需大于0");
             $newCodes = $db->generateCards($_POST['num'], $type, $_POST['pre'], '',16, htmlspecialchars($_POST['note']), intval($_POST['app_id']), intval($customHours * 3600));
+            $generatedCardsText = implode("\r\n", $newCodes);
             if (isset($_POST['auto_export']) && $_POST['auto_export'] == '1' && !empty($newCodes)) {
                 if (ob_get_level()) ob_end_clean(); header('Content-Type: text/plain'); header('Content-Disposition: attachment; filename="new_cards_'.date('YmdHis').'.txt"');
-                foreach ($newCodes as $code) { echo $code . "\r\n"; } exit;
+                echo $generatedCardsText; exit;
             }
             $msg = "成功生成 {$_POST['num']} 张";
         } elseif (isset($_POST['add_blacklist'])) {
@@ -133,13 +137,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->updateAdminPassword($pwd1); setcookie('admin_trust', '', time() - 3600, '/'); session_destroy(); header('Location: login.php'); exit;
         } elseif (isset($_POST['update_settings'])) {
             $db->saveSystemSettings([
-                'site_title' => $conf_site_title, 
-                'favicon' => $conf_favicon, 
-                'admin_avatar' => $conf_avatar, 
-                'api_encrypt' => isset($_POST['api_encrypt']) ? '1' : '0',
-                'enable_bg_image' => isset($_POST['enable_bg_image']) ? '1' : '0',
-                'bg_img_opacity' => floatval($_POST['bg_img_opacity'] ?? 0.2),
-                'card_opacity' => floatval($_POST['card_opacity'] ?? 0.7)
+                'site_title' => $conf_site_title, 'favicon' => $conf_favicon, 'admin_avatar' => $conf_avatar, 
+                'api_encrypt' => isset($_POST['api_encrypt']) ? '1' : '0', 'enable_bg_image' => isset($_POST['enable_bg_image']) ? '1' : '0',
+                'bg_img_opacity' => floatval($_POST['bg_img_opacity'] ?? 0.2), 'card_opacity' => floatval($_POST['card_opacity'] ?? 0.7)
             ]);
             $msg = "配置已保存"; echo "<script>alert('$msg');location.href='cards.php?tab=settings';</script>"; exit;
         } elseif (isset($_POST['ban_card'])) { $db->updateCardStatus(intval($_POST['id']), 2); $msg = "已封禁";
@@ -155,11 +155,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch(Exception $e) { $errorMsg = $e->getMessage(); }
 }
 
-$dashboardData = ['stats'=>['total'=>0,'unused'=>0,'active'=>0], 'app_stats'=>[], 'chart_types'=>[]];
+$dashboardData = ['stats'=>['total'=>0,'unused'=>0,'active'=>0,'online'=>0], 'app_stats'=>[], 'chart_types'=>[]];
 $logs = []; $activeDevices = []; $cardList = []; $totalCards = 0; $totalPages = 0;
 try { $dashboardData = $db->getDashboardData(); $logs = $db->getUsageLogs(20, 0); $activeDevices = $db->getActiveDevices(); } catch (Throwable $e) {}
 
-$display_stats = [ 'total' => $dashboardData['stats']['total'], 'active' => $dashboardData['stats']['active'], 'apps' => count($appList), 'unused' => $dashboardData['stats']['unused'] ];
+$display_stats = [ 'total' => $dashboardData['stats']['total'], 'active' => $dashboardData['stats']['active'], 'apps' => count($appList), 'unused' => $dashboardData['stats']['unused'], 'online' => $dashboardData['stats']['online'] ];
 
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $perPage = isset($_GET['limit']) ? intval($_GET['limit']) : 20;
@@ -187,139 +187,58 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="assets/css/cards.css?v=<?= time() ?>" rel="stylesheet">
 <style>
-    /* 滑动条自定义样式 */
     input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; background: var(--border-color-input); border-radius: 3px; outline: none; transition: background 0.2s; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--color-primary); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: transform 0.1s; }
     input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
-    
-    /* 移动端底部栏圆角悬浮补丁 */
     @media (max-width: 768px) {
         body { padding-bottom: 90px !important; }
-        .m-nav {
-            bottom: 16px !important; left: 16px !important; right: 16px !important; width: auto !important;
-            border-radius: 24px !important; border-top: none !important;
-            border: 1px solid rgba(100, 100, 100, 0.1) !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
-            padding: 4px 8px !important;
-        }
+        .m-nav { bottom: 16px !important; left: 16px !important; right: 16px !important; width: auto !important; border-radius: 24px !important; border-top: none !important; border: 1px solid rgba(100, 100, 100, 0.1) !important; box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important; padding: 4px 8px !important; }
     }
-
-    /* 侧边栏增加深度阴影，提升立体感 */
-    .admin-sider {
-        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06) !important;
-        border-right: 1px solid var(--border-color) !important;
-        z-index: 50; 
-    }
+    .admin-sider { box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06) !important; border-right: 1px solid var(--border-color) !important; z-index: 50; }
+    .admin-layout.sider-collapsed .sider-logo .logo-info { display: none !important; }
 </style>
-
 <?php if ($conf_enable_bg == '1'): ?>
 <style>
-    /* 全局背景图 */
     .admin-main { position: relative; z-index: 1; }
-    .admin-main::before {
-        content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background: url('https://www.loliapi.com/acg/pc/') center/cover fixed;
-        opacity: <?= htmlspecialchars($conf_bg_img_opacity) ?>; 
-        pointer-events: none; z-index: -1;
-    }
-    
-    /* 顶部导航栏毛玻璃化 (修复割裂感) */
-    .admin-header {
-        background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important;
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
-    }
-
-    /* 毛玻璃亚克力拟物风格适配核心 */
-    .e-card, .pro-stat-card {
-        background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; 
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.6) !important;
-        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05) !important;
-    }
-
-    /* 将原本带底色的元素也转为半透明 */
-    .e-table thead, .e-table th, thead[style*="var(--bg-layout)"], div[style*="var(--bg-layout)"] {
-        background: rgba(255, 255, 255, <?= max(0, $conf_card_opacity - 0.3) ?>) !important;
-    }
-
-    /* 输入控件毛玻璃化 */
-    .e-input, .e-select, .e-textarea {
-        background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important;
-        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    }
-    
-    /* 移动端底栏的毛玻璃适配 */
-    @media (max-width: 768px) {
-        .m-nav {
-            background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important;
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.5) !important;
-        }
-    }
+    .admin-main::before { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url('https://www.loliapi.com/acg/pc/') center/cover fixed; opacity: <?= htmlspecialchars($conf_bg_img_opacity) ?>; pointer-events: none; z-index: -1; }
+    .admin-header { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important; }
+    .e-card, .pro-stat-card { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.6) !important; box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05) !important; }
+    .e-table thead, .e-table th, thead[style*="var(--bg-layout)"], div[style*="var(--bg-layout)"] { background: rgba(255, 255, 255, <?= max(0, $conf_card_opacity - 0.3) ?>) !important; }
+    .e-input, .e-select, .e-textarea { background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    @media (max-width: 768px) { .m-nav { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.5) !important; } }
 </style>
 <?php endif; ?>
 </head>
 <body>
 
 <div class="admin-layout">
-    
-    <!-- 侧边栏 (PC端) -->
     <aside class="admin-sider">
         <div class="sider-logo">
             <img src="<?= htmlspecialchars($conf_avatar) ?>" alt="Logo">
-            <div style="display: flex; flex-direction: column; justify-content: center;">
+            <div class="logo-info" style="display: flex; flex-direction: column; justify-content: center; overflow: hidden; white-space: nowrap; transition: all 0.3s;">
                 <span class="logo-text" style="line-height: 1.2;"><?= htmlspecialchars(mb_strimwidth($conf_site_title, 0, 10, '..')) ?></span>
-                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.7.5</span>
+                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.7.8</span>
             </div>
         </div>
         <div class="sider-menu">
             <div class="menu-group"><span>系统概览</span></div>
-            <a href="?tab=dashboard" class="menu-item <?= $tab == 'dashboard' ? 'active' : '' ?>">
-                <i class="ph ph-squares-four"></i> <span>数据总览</span>
-            </a>
-            
+            <a href="?tab=dashboard" class="menu-item <?= $tab == 'dashboard' ? 'active' : '' ?>"><i class="ph ph-squares-four"></i> <span>数据总览</span></a>
             <div class="menu-group"><span>核心业务</span></div>
-            <a href="?tab=apps" class="menu-item <?= $tab == 'apps' ? 'active' : '' ?>">
-                <i class="ph ph-app-window"></i> <span>应用管理</span>
-            </a>
-
-            <!-- 手风琴折叠菜单：卡密管理 -->
+            <a href="?tab=apps" class="menu-item <?= $tab == 'apps' ? 'active' : '' ?>"><i class="ph ph-app-window"></i> <span>应用管理</span></a>
             <?php $isCardMenu = in_array($tab, ['list', 'create']); ?>
-            <div class="menu-item has-submenu <?= $isCardMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)">
-                <i class="ph ph-database"></i> <span>卡密管理</span>
-                <i class="ph ph-caret-down sub-arrow"></i>
-            </div>
-            <div class="sub-menu" style="<?= $isCardMenu ? 'display:block;' : 'display:none;' ?>">
-                <a href="?tab=list" class="sub-menu-item <?= $tab == 'list' ? 'active' : '' ?>">卡密库存</a>
-                <a href="?tab=create" class="sub-menu-item <?= $tab == 'create' ? 'active' : '' ?>">批量制卡</a>
-            </div>
-
-            <!-- 手风琴折叠菜单：防御与监控 -->
+            <div class="menu-item has-submenu <?= $isCardMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)"><i class="ph ph-database"></i> <span>卡密管理</span><i class="ph ph-caret-down sub-arrow"></i></div>
+            <div class="sub-menu" style="<?= $isCardMenu ? 'display:block;' : 'display:none;' ?>"><a href="?tab=list" class="sub-menu-item <?= $tab == 'list' ? 'active' : '' ?>">卡密库存</a><a href="?tab=create" class="sub-menu-item <?= $tab == 'create' ? 'active' : '' ?>">批量制卡</a></div>
             <?php $isSecMenu = in_array($tab, ['blacklist', 'logs']); ?>
-            <div class="menu-item has-submenu <?= $isSecMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)">
-                <i class="ph ph-shield-check"></i> <span>防御与监控</span>
-                <i class="ph ph-caret-down sub-arrow"></i>
-            </div>
-            <div class="sub-menu" style="<?= $isSecMenu ? 'display:block;' : 'display:none;' ?>">
-                <a href="?tab=blacklist" class="sub-menu-item <?= $tab == 'blacklist' ? 'active' : '' ?>">防御与拉黑</a>
-                <a href="?tab=logs" class="sub-menu-item <?= $tab == 'logs' ? 'active' : '' ?>">访问日志</a>
-            </div>
-            
+            <div class="menu-item has-submenu <?= $isSecMenu ? 'submenu-open active-parent' : '' ?>" onclick="toggleSubMenu(this)"><i class="ph ph-shield-check"></i> <span>防御与监控</span><i class="ph ph-caret-down sub-arrow"></i></div>
+            <div class="sub-menu" style="<?= $isSecMenu ? 'display:block;' : 'display:none;' ?>"><a href="?tab=blacklist" class="sub-menu-item <?= $tab == 'blacklist' ? 'active' : '' ?>">防御与拉黑</a><a href="?tab=logs" class="sub-menu-item <?= $tab == 'logs' ? 'active' : '' ?>">访问日志</a></div>
             <div style="margin-top: auto;"></div>
-            
             <div class="menu-group"><span>系统设置</span></div>
-            <a href="?tab=settings" class="menu-item <?= $tab == 'settings' ? 'active' : '' ?>">
-                <i class="ph ph-gear"></i> <span>全局配置</span>
-            </a>
-            
-            <a href="?logout=1" class="menu-item menu-item-danger data-no-ajax">
-                <i class="ph ph-sign-out"></i> <span>安全退出</span>
-            </a>
+            <a href="?tab=settings" class="menu-item <?= $tab == 'settings' ? 'active' : '' ?>"><i class="ph ph-gear"></i> <span>全局配置</span></a>
+            <a href="?tab=about" class="menu-item <?= $tab == 'about' ? 'active' : '' ?>"><i class="ph ph-info"></i> <span>关于作者</span></a>
+            <a href="?logout=1" class="menu-item menu-item-danger data-no-ajax"><i class="ph ph-sign-out"></i> <span>安全退出</span></a>
         </div>
     </aside>
 
-    <!-- 底部导航 (移动端) -->
     <nav class="m-nav" id="mNav">
         <a href="?tab=dashboard" class="m-nav-item <?= $tab == 'dashboard' ? 'active' : '' ?>"><i class="ph ph-squares-four"></i><span>概览</span></a>
         <a href="?tab=apps" class="m-nav-item <?= $tab == 'apps' ? 'active' : '' ?>"><i class="ph ph-app-window"></i><span>应用</span></a>
@@ -328,62 +247,35 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
         <a href="?tab=settings" class="m-nav-item <?= $tab == 'settings' ? 'active' : '' ?>"><i class="ph ph-gear"></i><span>设置</span></a>
     </nav>
 
-    <!-- 主体区域 -->
     <main class="admin-main">
         <header class="admin-header">
-            <div class="header-left">
-                <button class="sider-toggle" id="siderToggle"><i class="ph ph-list"></i></button>
-            </div>
-            <div class="header-user">
-                <span><?= htmlspecialchars($currentAdminUser) ?></span>
-                <img src="<?= htmlspecialchars($conf_avatar) ?>" class="header-avatar" alt="Avatar">
-            </div>
+            <div class="header-left"><button class="sider-toggle" id="siderToggle"><i class="ph ph-list"></i></button></div>
+            <div class="header-user"><span><?= htmlspecialchars($currentAdminUser) ?></span><img src="<?= htmlspecialchars($conf_avatar) ?>" class="header-avatar" alt="Avatar"></div>
         </header>
 
         <div class="admin-content" id="main" style="will-change: transform, opacity;">
             
             <?php if ($tab == 'dashboard'): ?>
-                <!-- 针对 Dashboard 专属的高级样式补丁 -->
                 <style>
                     @keyframes wave { 0% {transform: rotate(0deg);} 10% {transform: rotate(14deg);} 20% {transform: rotate(-8deg);} 30% {transform: rotate(14deg);} 40% {transform: rotate(-4deg);} 50% {transform: rotate(10deg);} 60% {transform: rotate(0deg);} 100% {transform: rotate(0deg);} }
                     .wave-emoji { display: inline-block; transform-origin: 70% 70%; animation: wave 2.5s infinite; }
-                    
-                    .pro-stat-card {
-                        position: relative; background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 20px;
-                        padding: 24px; overflow: hidden; display: flex; flex-direction: column; gap: 16px;
-                        transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-                    }
+                    .pro-stat-card { position: relative; background: var(--bg-container); border: 1px solid var(--border-color); border-radius: 20px; padding: 24px; overflow: hidden; display: flex; flex-direction: column; gap: 16px; transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
                     .pro-stat-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.08); border-color: transparent; }
                     .pro-stat-header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
                     .pro-stat-icon-wrap { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
                     .pro-stat-value { font-size: 36px; font-weight: 700; color: var(--text-primary); line-height: 1; font-family: 'Inter', system-ui, sans-serif; letter-spacing: -1px; }
                     .pro-stat-watermark { position: absolute; right: -15px; bottom: -15px; font-size: 100px; opacity: 0.04; transform: rotate(-15deg); pointer-events: none; }
-
-                    /* 自定义公告滚动条，更纤细优雅 */
-                    .notice-scroll::-webkit-scrollbar { width: 6px; }
-                    .notice-scroll::-webkit-scrollbar-track { background: transparent; }
-                    .notice-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
-                    .notice-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+                    .notice-scroll::-webkit-scrollbar { width: 6px; } .notice-scroll::-webkit-scrollbar-track { background: transparent; } .notice-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; } .notice-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
                 </style>
-
                 <?php
                     $h = date('H');
-                    if ($h < 6) { $greeting = '凌晨好！夜深了，注意休息哦'; $emoji = '🌙'; }
-                    elseif ($h < 9) { $greeting = '早上好！今天也要全力以赴'; $emoji = '☀️'; }
-                    elseif ($h < 12) { $greeting = '上午好！新的一天元气满满'; $emoji = '☕'; }
-                    elseif ($h < 14) { $greeting = '中午好！记得按时吃午饭哦'; $emoji = '🍱'; }
-                    elseif ($h < 18) { $greeting = '下午好！喝杯茶，继续努力吧'; $emoji = '🍵'; }
-                    else { $greeting = '晚上好！愿你度过一个轻松的夜晚'; $emoji = '✨'; }
+                    if ($h < 6) { $greeting = '凌晨好！夜深了，注意休息哦'; $emoji = '🌙'; } elseif ($h < 9) { $greeting = '早上好！今天也要全力以赴'; $emoji = '☀️'; } elseif ($h < 12) { $greeting = '上午好！新的一天元气满满'; $emoji = '☕'; } elseif ($h < 14) { $greeting = '中午好！记得按时吃午饭哦'; $emoji = '🍱'; } elseif ($h < 18) { $greeting = '下午好！喝杯茶，继续努力吧'; $emoji = '🍵'; } else { $greeting = '晚上好！愿你度过一个轻松的夜晚'; $emoji = '✨'; }
                 ?>
-                <!-- 情感化欢迎语 -->
                 <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 32px;">
-                    <h2 class="page-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                        <span class="wave-emoji" style="font-size: 26px;">👋</span> <span style="font-weight: 800; letter-spacing: -0.5px;">欢迎回来</span>
-                    </h2>
+                    <h2 class="page-title" style="margin: 0; display: flex; align-items: center; gap: 8px;"><span class="wave-emoji" style="font-size: 26px;">👋</span> <span style="font-weight: 800; letter-spacing: -0.5px;">欢迎回来</span></h2>
                     <span style="font-size: 14px; color: var(--text-tertiary); font-weight: 500;"><?= $emoji ?> <?= $greeting ?></span>
                 </div>
 
-                <!-- 顶级数据统计 -->
                 <div class="grid grid-cols-4" style="gap: 24px; margin-bottom: 32px;">
                     <div class="pro-stat-card">
                         <i class="ph-fill ph-database pro-stat-watermark"></i>
@@ -393,7 +285,7 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                     <div class="pro-stat-card">
                         <i class="ph-fill ph-wifi-high pro-stat-watermark"></i>
                         <div class="pro-stat-header"><span>活跃设备</span><div class="pro-stat-icon-wrap" style="background:var(--color-success-bg); color:var(--color-success);"><i class="ph-fill ph-wifi-high"></i></div></div>
-                        <div class="pro-stat-value"><?= number_format($display_stats['active']) ?></div>
+                        <div class="pro-stat-value"><?= number_format($display_stats['active']) ?> <span style="font-size: 16px; color: var(--text-tertiary); font-weight: normal; margin-left: 4px;">/ <?= number_format($display_stats['online'] ?? 0) ?> 在线</span></div>
                     </div>
                     <div class="pro-stat-card">
                         <i class="ph-fill ph-app-window pro-stat-watermark"></i>
@@ -407,13 +299,8 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                     </div>
                 </div>
 
-                <!-- 下方区域重构：左右均采用弹性纵向堆叠排版 -->
                 <div class="grid grid-cols-2" style="grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 32px; align-items: start;">
-                    
-                    <!-- 左侧弹性堆叠：活跃设备 + 审计日志 -->
                     <div style="display: flex; flex-direction: column; gap: 24px; height: 100%;">
-                        
-                        <!-- 活跃设备卡片 -->
                         <div class="e-card" style="margin-bottom: 0;">
                             <div class="e-card-header" style="font-weight: 600;">实时活跃设备</div>
                             <div class="e-table-wrap">
@@ -427,26 +314,16 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                                             <td><span class="e-tag e-tag-green"><?= date('m-d H:i', strtotime($dev['expire_time'])) ?></span></td>
                                         </tr>
                                         <?php endforeach; if (empty($activeDevices)): ?>
-                                        <tr>
-                                            <td colspan="3">
-                                                <div style="padding: 42px 0; text-align: center; display:flex; flex-direction:column; align-items:center; gap:8px;">
-                                                    <i class="ph-fill ph-ghost" style="font-size: 42px; color: var(--border-color-input);"></i>
-                                                    <span style="color: var(--text-tertiary); font-size: 14px;">当前宇宙非常安静，暂无活跃设备</span>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                        <tr><td colspan="3"><div style="padding: 42px 0; text-align: center; display:flex; flex-direction:column; align-items:center; gap:8px;"><i class="ph-fill ph-ghost" style="font-size: 42px; color: var(--border-color-input);"></i><span style="color: var(--text-tertiary); font-size: 14px;">当前宇宙非常安静，暂无活跃设备</span></div></td></tr>
                                         <?php endif; ?>
                                     </tbody>
                                 </table>
                             </div>
                         </div>
 
-                        <!-- 审计日志卡片 (新增，填充左下角空白) -->
                         <div class="e-card" style="margin-bottom: 0; flex-grow: 1; display: flex; flex-direction: column;">
                             <div class="e-card-header" style="font-weight: 600; display:flex; align-items:center; justify-content:space-between;">
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <i class="ph-fill ph-clock-counter-clockwise" style="color: var(--color-primary); font-size: 18px;"></i> 最新审计日志
-                                </div>
+                                <div style="display:flex; align-items:center; gap:8px;"><i class="ph-fill ph-clock-counter-clockwise" style="color: var(--color-primary); font-size: 18px;"></i> 最新审计日志</div>
                                 <a href="?tab=logs" style="font-size: 13px; color: var(--color-primary); font-weight: 400; text-decoration: none; display:flex; align-items:center; gap:4px;">查看全部 <i class="ph ph-arrow-right"></i></a>
                             </div>
                             <div class="e-table-wrap" style="flex: 1;">
@@ -461,54 +338,31 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                                             <td class="mono" style="font-size:12px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><?= htmlspecialchars($log['card_code'] ?? $log['details'] ?? '-') ?></td>
                                         </tr>
                                         <?php endforeach; if(empty($logs)): ?>
-                                        <tr>
-                                            <td colspan="4">
-                                                <div style="padding: 32px 0; text-align: center; display:flex; flex-direction:column; align-items:center; gap:8px;">
-                                                    <i class="ph-fill ph-wind" style="font-size: 32px; color: var(--border-color-input);"></i>
-                                                    <span style="color: var(--text-tertiary); font-size: 13px;">暂无日志记录</span>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                        <tr><td colspan="4"><div style="padding: 32px 0; text-align: center; display:flex; flex-direction:column; align-items:center; gap:8px;"><i class="ph-fill ph-wind" style="font-size: 32px; color: var(--border-color-input);"></i><span style="color: var(--text-tertiary); font-size: 13px;">暂无日志记录</span></div></td></tr>
                                         <?php endif; ?>
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-
                     </div>
 
-                    <!-- 右侧弹性堆叠：系统公告 + 图表卡片 -->
                     <div style="display: flex; flex-direction: column; gap: 24px; height: 100%;">
-                        
-                        <!-- 重新布局后的公告卡片 -->
                         <div class="e-card" style="margin-bottom: 0; flex-shrink: 0;">
-                            <div class="e-card-header" style="font-weight: 600; display:flex; align-items:center; gap:8px;">
-                                <i class="ph-fill ph-megaphone" style="color: var(--color-primary); font-size: 18px;"></i> 系统公告
-                            </div>
-                            <!-- 限制最大高度并允许滚动 -->
+                            <div class="e-card-header" style="font-weight: 600; display:flex; align-items:center; gap:8px;"><i class="ph-fill ph-megaphone" style="color: var(--color-primary); font-size: 18px;"></i> 系统公告</div>
                             <div class="notice-scroll" id="cloud-notice" style="padding: 20px; white-space: pre-wrap; line-height: 1.7; color: var(--text-secondary); font-size: 13px; max-height: 220px; overflow-y: auto;">
-                                <div style="display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-tertiary);">
-                                    <i class="ph ph-spinner-gap" style="animation:spin 1s linear infinite;"></i> 正在同步云端信息...
-                                </div>
+                                <div style="display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-tertiary);"><i class="ph ph-spinner-gap" style="animation:spin 1s linear infinite;"></i> 正在同步云端信息...</div>
                             </div>
                         </div>
 
-                        <!-- 图表卡片 -->
                         <div class="e-card" style="margin-bottom: 0; flex-grow: 1; display: flex; flex-direction: column;">
                             <div class="e-card-header" style="font-weight: 600;">卡密类型分布</div>
                             <div class="e-card-body flex justify-center items-center" style="flex: 1; min-height: 220px; position:relative; padding: 20px;">
                                 <?php if(empty($dashboardData['chart_types'])): ?>
-                                    <div style="text-align: center; display:flex; flex-direction:column; align-items:center; gap:8px; position:absolute;">
-                                        <i class="ph-fill ph-chart-pie-slice" style="font-size: 42px; color: var(--border-color-input);"></i>
-                                        <span style="color: var(--text-tertiary); font-size: 14px;">暂无分布数据</span>
-                                    </div>
+                                    <div style="text-align: center; display:flex; flex-direction:column; align-items:center; gap:8px; position:absolute;"><i class="ph-fill ph-chart-pie-slice" style="font-size: 42px; color: var(--border-color-input);"></i><span style="color: var(--text-tertiary); font-size: 14px;">暂无分布数据</span></div>
                                 <?php endif; ?>
-                                <div style="width: 200px; height: 200px; z-index: 1;">
-                                    <canvas id="cM" data-chart='<?= json_encode($dashboardData['chart_types']) ?>' data-types='<?= json_encode(CARD_TYPES) ?>'></canvas>
-                                </div>
+                                <div style="width: 200px; height: 200px; z-index: 1;"><canvas id="cM" data-chart='<?= json_encode($dashboardData['chart_types']) ?>' data-types='<?= json_encode(CARD_TYPES) ?>'></canvas></div>
                             </div>
                         </div>
-
                     </div>
                 </div>
 
@@ -529,19 +383,25 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                     <div class="e-card">
                         <div class="e-table-wrap">
                             <table class="e-table">
-                                <thead><tr><th>应用名称</th><th>版本/备注</th><th>App Key</th><th>库存统计</th><th>状态</th><th>操作</th></tr></thead>
+                                <thead><tr><th>应用名称</th><th>版本/备注</th><th>App Key / Secret (点击复制)</th><th>库存统计</th><th>状态</th><th>操作</th></tr></thead>
                                 <tbody>
                                     <?php foreach($appList as $app): ?>
                                     <tr>
                                         <td style="font-weight: 500; color:var(--text-primary);"><?= htmlspecialchars($app['app_name']) ?></td>
                                         <td><span class="e-tag"><?= htmlspecialchars($app['app_version']?:'1.0') ?></span> <span style="font-size:12px;color:var(--text-tertiary); margin-left:6px;"><?= htmlspecialchars($app['notes']) ?></span></td>
-                                        <td><span class="mono e-tag e-tag-blue" onclick="copy('<?= $app['app_key'] ?>')" style="cursor:pointer;"><i class="ph ph-copy" style="margin-right:4px;"></i> <?= $app['app_key'] ?></span></td>
+                                        
+                                        <td style="min-width: 150px;">
+                                            <div class="mono e-tag e-tag-blue" onclick="copy('<?= $app['app_key'] ?>')" style="cursor:pointer; margin-bottom:4px; display:inline-block;" title="App Key (应用身份标识，明文暴露无危险)"><i class="ph ph-copy"></i> Key: <?= substr($app['app_key'],0,6) ?>...</div><br>
+                                            <div class="mono e-tag e-tag-purple" onclick="copy('<?= $app['api_secret'] ?>')" style="cursor:pointer; display:inline-block;" title="API Secret (通讯加密盐，切勿泄露)"><i class="ph ph-copy"></i> Sec: <?= substr($app['api_secret'],0,6) ?>...</div>
+                                        </td>
+
                                         <td><span class="e-tag e-tag-warning"><?= number_format($app['card_count']) ?> 张</span></td>
                                         <td><?= $app['status']==1 ? '<span class="e-tag e-tag-green">正常</span>' : '<span class="e-tag e-tag-red">禁用</span>' ?></td>
                                         <td>
                                             <div class="flex gap-2">
                                                 <button class="e-btn e-btn-link" onclick="openAppModal(<?= $app['id'] ?>,'<?= addslashes($app['app_name']) ?>','<?= addslashes($app['app_version']) ?>','<?= addslashes($app['notes']) ?>','<?= addslashes($app['update_url'] ?? '') ?>',<?= $app['force_update'] ?? 0 ?>)">编辑</button>
                                                 <button class="e-btn e-btn-link" onclick="singleActionForm('toggle_app',<?= $app['id'] ?>,'app_id')"><?= $app['status']==1?'禁用':'启用' ?></button>
+                                                <button class="e-btn e-btn-link" style="color:var(--color-warning);" onclick="if(confirm('警告：重置后客户端必须同步更换新的 Secret 才能通讯解密！确定重置？')) singleActionForm('reset_secret',<?= $app['id'] ?>,'app_id')">换盐</button>
                                                 <button class="e-btn e-btn-link" style="color:var(--color-error);" onclick="<?= $app['card_count'] > 0 ? "alert('需先清空卡密')" : "singleActionForm('delete_app',{$app['id']},'app_id')" ?>">删除</button>
                                             </div>
                                         </td>
@@ -566,12 +426,14 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                             </div>
                         </div>
                         <div class="e-card">
-                            <div class="e-card-header">接口信息</div>
+                            <div class="e-card-header">接口与安全提示</div>
                             <div class="e-card-body">
                                 <?php $apiUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")."://".$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/')."/Verifyfile/api.php"; ?>
-                                <p style="color:var(--text-secondary); margin-bottom:10px;">客户端 API 接口地址：</p>
+                                <p style="color:var(--text-secondary); margin-bottom:10px;">客户端 API 接口通讯地址：</p>
                                 <div class="e-input mono" style="background:var(--bg-layout); cursor:pointer;" onclick="copy('<?= $apiUrl ?>')"><?= $apiUrl ?></div>
-                                <p style="font-size:12px; color:var(--text-tertiary); margin-top:12px;">使用对应的 App Key 调用该接口进行卡密验证。</p>
+                                <p style="font-size:12px; color:var(--text-tertiary); margin-top:12px; line-height:1.6;">
+                                    <strong>安全建议：</strong>请求时使用 <span class="mono">App Key</span> 作为身份标识；<br>并将后台对应分配的 <span class="mono">API Secret (密钥盐)</span> 写死在客户端源码深处，专门用于接收响应数据的 AES 解密。
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -618,7 +480,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                     </div>
                 </div>
 
-                <!-- 弹窗部分 -->
                 <div id="appModal" class="modal-overlay" style="display:none;">
                     <div class="modal-content">
                         <div class="modal-header">应用设置</div>
@@ -782,6 +643,18 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                         </form>
                     </div>
                 </div>
+
+                <?php if (!empty($generatedCardsText)): ?>
+                <div class="e-card mt-6" style="max-width: 800px;">
+                    <div class="e-card-header" style="color:var(--color-success); font-weight: 600;"><i class="ph-fill ph-check-circle"></i> 制卡成功 - 直接输出</div>
+                    <div class="e-card-body">
+                        <textarea id="gen_result_box" class="e-textarea mono" style="height: 160px; font-size: 14px;" readonly><?= htmlspecialchars($generatedCardsText) ?></textarea>
+                        <div class="mt-4 flex gap-4">
+                            <button type="button" class="e-btn e-btn-primary" onclick="copy(document.getElementById('gen_result_box').value)">一键复制全部卡密</button>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
             <?php endif; ?>
 
             <?php if ($tab == 'blacklist'): ?>
@@ -883,7 +756,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                                 <button type="submit" data-no-ajax="true" class="e-btn e-btn-primary mt-2" style="height:38px; padding: 0 24px;">保存修改并刷新</button>
                             </form>
                             
-                            <!-- 右侧修改密码 -->
                             <div style="grid-column: span 1; padding-left: 24px; border-left: 1px dashed var(--border-color-input);">
                                 <h4 style="margin:0 0 16px 0; font-weight:600; font-size:15px; color:var(--text-primary);">修改管理员密码</h4>
                                 <form method="POST">
@@ -919,20 +791,40 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
             <?php endif; ?>
 
             <?php if ($tab == 'about'): ?>
-                <div class="e-card" style="max-width: 600px; margin: 0 auto; text-align: center; padding: 48px 24px; border:none; background:transparent; box-shadow:none;">
-                    <img src="<?= htmlspecialchars($conf_avatar) ?>" style="width:80px; height:80px; border-radius:20px; margin-bottom:20px; box-shadow:0 8px 16px rgba(0,0,0,0.1);">
-                    <h2 style="font-size:28px; font-weight:700; margin:0 0 8px 0; color:var(--text-primary); letter-spacing:-0.5px;">GuYi Access Pro</h2>
-                    <p style="color:var(--text-secondary); margin:0 0 40px 0; font-size:15px;">工业级高可用 · 多应用验证分发架构</p>
+                <?php
+                    // 核心信息防二改保护 (Base64碎片化重组)
+                    $a_q = base64_decode('MTU2N'.'DQwMD'.'Aw');
+                    $a_u = base64_decode('aHR0cHM6Ly9'.'4bi0tanBy'.'MDcxZS5'.'0b3Av');
+                    $a_a = base64_decode('aHR0cHM6Ly9'.'xMi5xbG9nby5j'.'bi9oZWFkaW1n'.'X2RsP2RzdF9'.'1aW49MTU2NDQw'.'MDAwJnNwZWM'.'9NjQw');
+                ?>
+                <div class="e-card" style="max-width: 600px; margin: 40px auto; text-align: center; padding: 48px 24px; border:none; background:transparent; box-shadow:none;">
+                    <img src="<?= htmlspecialchars($a_a) ?>" style="width:100px; height:100px; border-radius:50%; margin-bottom:24px; box-shadow:0 12px 24px rgba(0,0,0,0.12); transition: transform 0.3s;" onmouseover="this.style.transform='scale(1.05) rotate(5deg)'" onmouseout="this.style.transform='scale(1) rotate(0)'">
+                    <h2 style="font-size:28px; font-weight:700; margin:0 0 8px 0; color:var(--text-primary); letter-spacing:-0.5px;"><?= base64_decode('R3VZaSBBY2Nlc3MgUHJv') ?></h2>
+                    <p style="color:var(--text-secondary); margin:0 0 32px 0; font-size:15px;">工业级高可用 · 多应用验证分发架构</p>
                     
-                    <div style="display:flex; flex-direction:column; gap:16px; text-align:left;">
-                        <a href="https://github.com/GuYiovo/GuYi-Access" target="_blank" style="display:flex; align-items:center; gap:16px; padding:20px; background:var(--bg-container); border:1px solid var(--border-color); border-radius:16px; color:var(--text-primary); box-shadow:var(--shadow-sm); transition:transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none';this.style.boxShadow='var(--shadow-sm)'">
-                            <i class="ph-fill ph-github-logo" style="font-size:32px; color:#18181b;"></i>
-                            <div><div style="font-weight:600; font-size:16px; margin-bottom:4px;">GitHub 开源项目</div><div style="font-size:13px; color:var(--text-tertiary);">获取最新源码及更新日志</div></div>
-                        </a>
-                        <a href="https://official.可爱.top/" target="_blank" style="display:flex; align-items:center; gap:16px; padding:20px; background:var(--bg-container); border:1px solid var(--border-color); border-radius:16px; color:var(--text-primary); box-shadow:var(--shadow-sm); transition:transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.transform='none';this.style.boxShadow='var(--shadow-sm)'">
-                            <i class="ph-fill ph-rocket-launch" style="font-size:32px; color:var(--color-primary);"></i>
-                            <div><div style="font-weight:600; font-size:16px; margin-bottom:4px;">官方网站 (主站)</div><div style="font-size:13px; color:var(--text-tertiary);">official.可爱.top</div></div>
-                        </a>
+                    <div style="background: var(--bg-layout); border-radius: 16px; padding: 24px; border: 1px solid var(--border-color); display: inline-block; text-align: left; min-width: 280px; width: 100%; max-width: 360px;">
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom: 20px;">
+                            <div style="width:40px; height:40px; border-radius:12px; background:var(--color-primary-bg); color:var(--color-primary); display:flex; align-items:center; justify-content:center; font-size:22px;"><i class="ph-fill ph-user-circle"></i></div>
+                            <div>
+                                <div style="font-size:12px; color:var(--text-tertiary); font-weight:600; text-transform:uppercase; letter-spacing: 0.5px;">AUTHOR</div>
+                                <div style="font-size:16px; font-weight:600; color:var(--text-primary);">核心架构设计</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display:flex; flex-direction:column; gap: 14px; font-size: 14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px dashed var(--border-color-input); padding-bottom: 12px;">
+                                <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-chat-circle-dots" style="vertical-align:-2px; margin-right:4px;"></i> 作者 QQ</span>
+                                <span class="mono font-medium" style="color:var(--color-primary); cursor:pointer; background: var(--color-primary-bg); padding: 4px 8px; border-radius: 6px;" onclick="copy('<?= $a_q ?>')"><?= $a_q ?></span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px dashed var(--border-color-input); padding-bottom: 12px;">
+                                <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-globe" style="vertical-align:-2px; margin-right:4px;"></i> 官方网站</span>
+                                <a href="<?= htmlspecialchars($a_u) ?>" target="_blank" style="color:var(--color-primary); text-decoration:none; display:flex; align-items:center; gap:4px; font-weight:600;">点击访问 <i class="ph ph-arrow-square-out"></i></a>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding-top: 4px;">
+                                <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-shield-check" style="vertical-align:-2px; margin-right:4px;"></i> 版权声明</span>
+                                <span style="color:var(--text-tertiary); font-size: 13px;">保留所有权利</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             <?php endif; ?>
@@ -940,7 +832,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
         </div>
     </main>
 
-    <!-- 弹窗挂载点 -->
     <div id="toast-root" class="toast-container"></div>
 </div>
 
@@ -992,7 +883,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
         subMenu.style.display = subMenu.style.display === 'block' ? 'none' : 'block';
     };
 
-    // ================= 核心：原生级别丝滑路由控制 (iOS 风格) =================
     let isNavigating = false;
     async function loadTab(url, isForm = false, formData = null, formMethod = 'POST') {
         if (isNavigating && !isForm) return;
@@ -1009,18 +899,13 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
 
         const m = document.getElementById('main');
         m.style.transition = 'opacity 0.2s cubic-bezier(0.4, 0, 1, 1), transform 0.2s cubic-bezier(0.4, 0, 1, 1)';
-        m.style.opacity = '0';
-        m.style.transform = 'scale(0.98)';
+        m.style.opacity = '0'; m.style.transform = 'scale(0.98)';
 
         try {
             const fetchOpts = { headers: {'X-Requested-With': 'XMLHttpRequest'} };
             if(isForm) { fetchOpts.method = formMethod; fetchOpts.body = formData; }
             
-            const [res] = await Promise.all([
-                fetch(url, fetchOpts),
-                new Promise(r => setTimeout(r, 150)) 
-            ]);
-            
+            const [res] = await Promise.all([ fetch(url, fetchOpts), new Promise(r => setTimeout(r, 150)) ]);
             if(res.redirected) { window.location.href = res.url; return; }
             
             const html = await res.text();
@@ -1035,24 +920,17 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
             initPage();
             
             void m.offsetHeight; 
-
             m.style.transition = 'opacity 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)';
-            m.style.opacity = '1';
-            m.style.transform = 'translateY(0) scale(1)';
-            
+            m.style.opacity = '1'; m.style.transform = 'translateY(0) scale(1)';
         } catch(e) {
-            toast('网络异常，正在刷新...', 'error'); 
-            window.location.href = url;
-        } finally {
-            setTimeout(() => { isNavigating = false; }, 400); 
-        }
+            toast('网络异常，正在刷新...', 'error'); window.location.href = url;
+        } finally { setTimeout(() => { isNavigating = false; }, 400); }
     }
     
     document.addEventListener('click', e => {
         const link = e.target.closest('a');
         if(link && link.href && link.href.includes('?tab=') && !link.hasAttribute('target') && !link.hasAttribute('download') && !link.classList.contains('data-no-ajax')) {
-            e.preventDefault();
-            loadTab(link.href);
+            e.preventDefault(); loadTab(link.href);
         }
     });
     
@@ -1095,7 +973,6 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                 localStorage.setItem('siderCollapsed', adminLayout.classList.contains('sider-collapsed') ? '1' : '0');
             });
         }
-        
         const m = document.getElementById('main');
         m.style.opacity = '0'; m.style.transform = 'translateY(12px) scale(1)';
         requestAnimationFrame(() => {

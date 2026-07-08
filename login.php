@@ -62,10 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
             $_SESSION['admin_logged_in'] = true;
             $_SESSION['last_ip'] = $_SERVER['REMOTE_ADDR'];
             
-            $cookieData = ['exp' => time() + 86400 * 3, 'ua' => md5($_SERVER['HTTP_USER_AGENT']), 'ph' => md5($hash)];
+            // 颁发 10 年免登录 Cookie (86400秒 * 365天 * 10年 = 315360000)
+            $cookieData = ['exp' => time() + 315360000, 'ua' => md5($_SERVER['HTTP_USER_AGENT']), 'ph' => md5($hash)];
             $payload = base64_encode(json_encode($cookieData));
             $sign = hash_hmac('sha256', $payload, SYS_SECRET);
-            setcookie('admin_trust', "$payload|$sign", time() + 86400 * 3, '/', '', false, true);
+            setcookie('admin_trust', "$payload|$sign", time() + 315360000, '/', '', false, true);
             
             header('Location: cards.php'); exit;
         } else {
