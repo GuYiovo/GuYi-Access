@@ -1,5 +1,4 @@
 <?php
-// 核心信息防二改保护 (Base64碎片化重组)
 $a_q = base64_decode('MTU2N'.'DQwMD'.'Aw');
 $a_u = base64_decode('aHR0cHM6Ly9'.'4bi0tanBy'.'MDcxZS5'.'0b3Av');
 $a_a = base64_decode('aHR0cHM6Ly9'.'xMi5xbG9nby5j'.'bi9oZWFkaW1n'.'X2RsP2RzdF9'.'1aW49MTU2NDQw'.'MDAwJnNwZWM'.'9NjQw');
@@ -27,6 +26,7 @@ $a_a = base64_decode('aHR0cHM6Ly9'.'xMi5xbG9nby5j'.'bi9oZWFkaW1n'.'X2RsP2RzdF9'.
                 <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-globe" style="vertical-align:-2px; margin-right:4px;"></i> 官方网站</span>
                 <a href="<?= htmlspecialchars($a_u) ?>" target="_blank" style="color:var(--color-primary); text-decoration:none; display:flex; align-items:center; gap:4px; font-weight:600;">点击访问 <i class="ph ph-arrow-square-out"></i></a>
             </div>
+            
             <div style="display:flex; justify-content:space-between; align-items:center; padding-top: 4px;">
                 <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-shield-check" style="vertical-align:-2px; margin-right:4px;"></i> 版权声明</span>
                 <span style="color:var(--text-tertiary); font-size: 13px;">保留所有权利</span>

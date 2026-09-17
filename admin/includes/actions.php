@@ -69,6 +69,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pwd1 = $_POST['new_pwd'] ?? ''; $pwd2 = $_POST['confirm_pwd'] ?? '';
             if (empty($pwd1)) throw new Exception("密码不能为空"); if ($pwd1 !== $pwd2) throw new Exception("两次密码不一致");
             $db->updateAdminPassword($pwd1); setcookie('admin_trust', '', time() - 3600, '/'); session_destroy(); header('Location: ../login/login.php'); exit;
+        } elseif (isset($_POST['update_profile'])) {
+            // [新增] 账号头像双修更新逻辑
+            $admin_username = trim($_POST['admin_username']);
+            if (empty($admin_username)) throw new Exception("账号不能为空");
+            $db->updateAdminUsername($admin_username);
+
+            $avatar_val = '';
+            if (isset($_POST['avatar_type']) && $_POST['avatar_type'] === 'upload' && isset($_FILES['admin_avatar_file']) && $_FILES['admin_avatar_file']['error'] === UPLOAD_ERR_OK) {
+                // 回退两级到根目录下的 assets/ResourceStorage
+                $upload_dir = dirname(dirname(__DIR__)) . '/assets/ResourceStorage/';
+                if (!is_dir($upload_dir)) {
+                    @mkdir($upload_dir, 0755, true);
+                }
+                $ext = strtolower(pathinfo($_FILES['admin_avatar_file']['name'], PATHINFO_EXTENSION));
+                if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'])) {
+                    $filename = 'avatar_' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+                    if (move_uploaded_file($_FILES['admin_avatar_file']['tmp_name'], $upload_dir . $filename)) {
+                        $avatar_val = '../assets/ResourceStorage/' . $filename;
+                    }
+                }
+            }
+            if (empty($avatar_val) && isset($_POST['avatar_type']) && $_POST['avatar_type'] === 'url') {
+                $avatar_val = trim($_POST['admin_avatar_url'] ?? '');
+            }
+            if (!empty($avatar_val)) {
+                $db->saveSystemSettings(['admin_avatar' => $avatar_val]);
+            }
+            $msg = "资料修改成功";
+            echo "<script>alert('$msg');location.href='cards.php?tab=settings';</script>"; exit;
         } elseif (isset($_POST['update_settings'])) {
             $db->saveSystemSettings([
                 'site_title' => $conf_site_title, 'favicon' => $conf_favicon, 'admin_avatar' => $conf_avatar, 

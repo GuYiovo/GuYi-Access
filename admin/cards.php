@@ -45,6 +45,21 @@ function verifyCSRF() {
     }
 }
 
+// 语言切换逻辑
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['zh', 'en'])) {
+    setcookie('sys_lang', $_GET['lang'], time() + 86400 * 365, '/');
+    $tab = $_GET['tab'] ?? 'dashboard';
+    header("Location: cards.php?tab={$tab}");
+    exit;
+}
+
+require_once 'includes/lang.php';
+
+// 【核心拦截器】：如果是英文环境，启动底层输出拦截翻译引擎
+if ($sys_lang === 'en') {
+    ob_start('translate_output_buffer');
+}
+
 require_once 'includes/actions.php';
 
 $sysConf = $db->getSystemSettings();
@@ -60,8 +75,10 @@ $conf_bg_img_opacity = isset($sysConf['bg_img_opacity']) ? floatval($sysConf['bg
 $conf_card_opacity = isset($sysConf['card_opacity']) ? floatval($sysConf['card_opacity']) : 0.7;
 
 $tab = $_GET['tab'] ?? 'dashboard';
-$pageTitles = ['dashboard'=>'数据总览','apps'=>'应用管理','list'=>'卡密库存','create'=>'批量制卡','blacklist'=>'防御与拉黑','logs'=>'访问日志','settings'=>'系统配置','about'=>'关于作者'];
-$currentTitle = $pageTitles[$tab] ?? '控制台';
+
+// 这里拿掉了关于作者的独立页面路由
+$pageTitles = ['dashboard'=>t('数据总览'),'apps'=>t('应用管理'),'list'=>t('卡密库存'),'create'=>t('批量制卡'),'blacklist'=>t('防御与拉黑'),'logs'=>t('访问日志'),'settings'=>t('系统配置')];
+$currentTitle = $pageTitles[$tab] ?? t('控制台');
 $allowed_tabs = array_keys($pageTitles);
 
 require_once 'includes/header.php';

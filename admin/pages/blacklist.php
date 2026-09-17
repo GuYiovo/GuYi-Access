@@ -1,15 +1,23 @@
+<style>
+@media (max-width: 768px) {
+    .bl-form { flex-direction: column !important; align-items: stretch !important; gap: 16px !important; }
+    .bl-form .e-form-item { width: 100% !important; min-width: 100% !important; margin-bottom: 0 !important; }
+    .bl-form button { width: 100% !important; height: 48px !important; margin-top: 8px !important; border-radius: 16px !important; font-size: 15px !important; }
+}
+</style>
+
 <h2 class="page-title"><?= htmlspecialchars($currentTitle) ?></h2>
 <p class="page-desc">恶意请求与违规设备管理</p>
 
 <div class="e-card">
     <div class="e-card-header">新增黑名单</div>
     <div class="e-card-body" style="padding: 24px;">
-        <form method="POST" class="flex gap-4 items-end flex-wrap">
+        <form method="POST" class="flex gap-4 items-end flex-wrap bl-form">
             <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="add_blacklist" value="1">
             <div class="e-form-item" style="margin-bottom:0; width: 160px;"><label class="e-label">类型</label><select name="bl_type" class="e-select"><option value="device">设备特征码</option><option value="ip">IP 地址</option></select></div>
             <div class="e-form-item" style="margin-bottom:0; flex:1; min-width:200px;"><label class="e-label">拦截目标 (需准确无空格)</label><input type="text" name="bl_value" class="e-input" required></div>
             <div class="e-form-item" style="margin-bottom:0; flex:1; min-width:200px;"><label class="e-label">拦截原因备注</label><input type="text" name="bl_reason" class="e-input"></div>
-            <button type="submit" class="e-btn e-btn-danger" style="height:38px; margin-bottom:0; padding: 0 24px;">强制拉黑</button>
+            <button type="submit" class="e-btn e-btn-danger" style="height:44px; margin-bottom:0; padding: 0 32px;"><i class="ph ph-prohibit"></i> 强制拉黑</button>
         </form>
     </div>
 </div>

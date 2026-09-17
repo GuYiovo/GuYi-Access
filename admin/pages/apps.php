@@ -1,4 +1,13 @@
 <?php $appList = $db->getApps(); ?>
+<style>
+@media (max-width: 768px) {
+    .app-cards-grid { grid-template-columns: 1fr !important; gap: 20px !important; }
+    .modal-body form .flex { flex-direction: column !important; gap: 16px !important; }
+    .modal-body form .flex .e-form-item { width: 100% !important; margin-bottom: 0 !important; }
+    .modal-body .flex.justify-end { flex-direction: row !important; margin-top: 16px !important; }
+}
+</style>
+
 <h2 class="page-title"><?= htmlspecialchars($currentTitle) ?></h2>
 <p class="page-desc">多项目与软件隔离授权管理</p>
 
@@ -42,7 +51,7 @@
         </div>
     </div>
     
-    <div class="grid grid-cols-2 gap-4 mt-4">
+    <div class="grid grid-cols-2 gap-4 mt-4 app-cards-grid">
         <div class="e-card">
             <div class="e-card-header">创建新应用</div>
             <div class="e-card-body">
@@ -51,19 +60,18 @@
                     <div class="e-form-item"><label class="e-label">应用名称</label><input type="text" name="app_name" class="e-input" required placeholder="例如：Android 客户端"></div>
                     <div class="e-form-item"><label class="e-label">版本号</label><input type="text" name="app_version" class="e-input" placeholder="例如：v1.0.0"></div>
                     <div class="e-form-item"><label class="e-label">备注信息</label><input type="text" name="app_notes" class="e-input"></div>
-                    <button type="submit" class="e-btn e-btn-primary">立即创建</button>
+                    <button type="submit" class="e-btn e-btn-primary w-full" style="height: 48px;">立即创建</button>
                 </form>
             </div>
         </div>
         <div class="e-card">
             <div class="e-card-header">接口与安全提示</div>
             <div class="e-card-body">
-                <!-- ⭐ 修复：准确指引至 /Verifyfile/api.php -->
                 <?php $apiUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")."://".$_SERVER['HTTP_HOST'].rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])),'/')."/Verifyfile/api.php"; ?>
                 <p style="color:var(--text-secondary); margin-bottom:10px;">客户端 API 接口通讯地址：</p>
                 <div class="e-input mono" style="background:var(--bg-layout); cursor:pointer;" onclick="copy('<?= $apiUrl ?>')"><?= $apiUrl ?></div>
-                <p style="font-size:12px; color:var(--text-tertiary); margin-top:12px; line-height:1.6;">
-                    <strong>安全建议：</strong>请求时使用 <span class="mono">App Key</span> 作为身份标识；<br>并将后台对应分配的 <span class="mono">API Secret (密钥盐)</span> 写死在客户端源码深处，专门用于接收响应数据的 AES 解密。
+                <p style="font-size:13px; color:var(--text-tertiary); margin-top:16px; line-height:1.6;">
+                    <strong>安全建议：</strong>请求时使用 <span class="mono">App Key</span> 作为身份标识；<br>并将后台对应分配的 <span class="mono" style="color:var(--color-primary);">API Secret</span> 写死在客户端源码深处，专门用于接收响应数据的 AES 解密。
                 </p>
             </div>
         </div>
@@ -103,9 +111,9 @@
                 </div>
                 <div class="e-form-item"><label class="e-label">变量值</label><textarea name="var_value" class="e-textarea"></textarea></div>
                 <label class="flex items-center gap-2 mb-4 cursor-pointer">
-                    <input type="checkbox" name="var_public" value="1" style="accent-color: var(--color-primary);"> <span style="font-size:14px; color:var(--text-secondary);">设为公开变量 (客户端可见)</span>
+                    <input type="checkbox" name="var_public" value="1" style="accent-color: var(--color-primary); width: 18px; height: 18px;"> <span style="font-size:15px; color:var(--text-secondary);">设为公开变量 (客户端可见)</span>
                 </label>
-                <button type="submit" class="e-btn e-btn-primary">保存变量</button>
+                <button type="submit" class="e-btn e-btn-primary" style="height: 48px; width: 100%;">保存变量</button>
             </form>
         </div>
     </div>
@@ -123,7 +131,7 @@
                     <div class="e-form-item" style="flex:1;"><label class="e-label">更新链接</label><input type="text" id="e_app_url" name="update_url" class="e-input"></div>
                 </div>
                 <div class="e-form-item"><label class="e-label">更新日志</label><textarea id="e_app_note" name="app_notes" class="e-textarea"></textarea></div>
-                <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="e_app_force" name="force_update" value="1" style="accent-color: var(--color-primary);"> <span>强制更新拦截</span></label>
+                <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="e_app_force" name="force_update" value="1" style="accent-color: var(--color-primary); width: 18px; height: 18px;"> <span style="font-size: 15px;">强制更新拦截</span></label>
                 <div class="flex justify-end gap-2"><button type="button" class="e-btn e-btn-default" onclick="document.getElementById('appModal').style.display='none'">取消</button><button type="submit" class="e-btn e-btn-primary">确定</button></div>
             </form>
         </div>
@@ -138,7 +146,7 @@
                 <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="edit_var" value="1"><input type="hidden" id="e_var_id" name="var_id">
                 <div class="e-form-item"><label class="e-label">键名 (Key)</label><input type="text" id="e_var_key" name="var_key" class="e-input mono" required></div>
                 <div class="e-form-item"><label class="e-label">变量值</label><textarea id="e_var_val" name="var_value" class="e-textarea"></textarea></div>
-                <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="e_var_pub" name="var_public" value="1" style="accent-color: var(--color-primary);"> <span>公开变量</span></label>
+                <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="e_var_pub" name="var_public" value="1" style="accent-color: var(--color-primary); width: 18px; height: 18px;"> <span style="font-size: 15px;">公开变量</span></label>
                 <div class="flex justify-end gap-2"><button type="button" class="e-btn e-btn-default" onclick="document.getElementById('varModal').style.display='none'">取消</button><button type="submit" class="e-btn e-btn-primary">确定</button></div>
             </form>
         </div>
