@@ -9,7 +9,7 @@
 
 ---
 
-[🌐 官方网站](https://official.可爱.top/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [💬 QQ交流群](https://qm.qq.com/q/X3suYdjWAA)
+[🌐 官方网站](https://official.xn--tlq395o.top/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [💬 QQ交流群](https://qm.qq.com/q/X3suYdjWAA)
 
 ---
 
@@ -71,7 +71,7 @@
 }
 ```
 
-更多语言对接示例（C++, Rust, Go, Flutter, 易语言 等）请查看 [官方 API 文档](https://official.可爱.top/#docs)。
+更多语言对接示例（C++, Rust, Go, Flutter, 易语言 等）请查看 [官方 API 文档](https://official.xn--tlq395o.top/#docs)。
 
 ---
 

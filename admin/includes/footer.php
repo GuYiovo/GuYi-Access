@@ -147,7 +147,7 @@
         const verElement = document.querySelector('.sider-logo .logo-info span:nth-child(2)');
         const localVer = verElement ? verElement.innerText.replace(/^v/i, '').trim() : '2026.9.17';
         
-        fetch('https://cloudupdate.xn--jpr071e.top/GuYiAccessversionnumbervariable.txt?t=' + Date.now())
+        fetch('https://cloudupdate.xn--tlq395o.top/GuYiAccessversionnumbervariable.txt?t=' + Date.now())
             .then(r => r.text())
             .then(cloudVer => {
                 if (isManual && btnEl) { btnEl.innerHTML = oldBtnHtml; btnEl.style.pointerEvents = 'auto'; }
