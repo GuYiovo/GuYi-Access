@@ -9,7 +9,7 @@
 
 ---
 
-[🌐 官方网站](https://official.xn--tlq395o.top/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [💬 QQ交流群](https://qm.qq.com/q/X3suYdjWAA)
+[🌐 官方网站](https://sad66.pages.dev/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [💬 QQ交流群](https://qm.qq.com/q/X3suYdjWAA)
 
 ---
 
