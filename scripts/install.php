@@ -5,7 +5,7 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
 $msg = '';
 
 $is_mobile = preg_match("/(android|avantgo|blackberry|bolt|boost|cricket|docomo|fone|hiptop|mini|mobi|palm|phone|pie|samsung|scp|wap|windows ce;iemobile|xhtml\\+xml)/i", $_SERVER["HTTP_USER_AGENT"] ?? '');
-$video_url = $is_mobile ? 'https://videocloud.xn--tlq395o.top/wallpapermodCloud_4.mp4' : 'https://videocloud.xn--tlq395o.top/wallpaperPCCloud_4.mp4';
+$video_url = $is_mobile ? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/wallpapermodCloud_4.mp4' : 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/wallpaperPCCloud_4.mp4';
 
 function check_env() {
     $r = [];

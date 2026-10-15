@@ -71,7 +71,7 @@
 }
 ```
 
-更多语言对接示例（C++, Rust, Go, Flutter, 易语言 等）请查看 [官方 API 文档](https://official.xn--tlq395o.top/#docs)。
+更多语言对接示例（C++, Rust, Go, Flutter, 易语言 等）请查看 [官方 API 文档](https://guyi-access-wed.pages.dev/#docs)。
 
 ---
 
