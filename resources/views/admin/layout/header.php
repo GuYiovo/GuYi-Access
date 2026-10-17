@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <img src="<?= htmlspecialchars($conf_avatar) ?>" alt="Logo">
             <div class="logo-info" style="display: flex; flex-direction: column; justify-content: center; overflow: hidden; white-space: nowrap; transition: all 0.3s;">
                 <span class="logo-text" style="line-height: 1.2;"><?= htmlspecialchars(mb_strimwidth($conf_site_title, 0, 10, '..')) ?></span>
-                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.10.6</span>
+                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.10.17</span>
             </div>
         </div>
         <div class="sider-menu">
