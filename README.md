@@ -71,6 +71,24 @@
 }
 ```
 
+### 3. PHP 对接的 iOS Web App 环境限制
+
+只有 PHP 对接需要执行这项限制时，验证请求才额外传入 `client_language: "php"`（也可使用请求头 `X-Guyi-Client-Language: php`）。未声明该字段的其他语言对接不会触发这项限制。
+
+PHP 对接示例（在原请求 JSON 中增加该字段）：
+```json
+{
+  "app_key": "您的64位十六进制密钥",
+  "card_code": "用户输入的卡密",
+  "device_hash": "可选的硬件机器码",
+  "client_language": "php"
+}
+```
+
+当 PHP 对接声明此字段时，若请求的 `User-Agent` 不含 `[IOS_WEBAPP_VERIFIED]` 且卡密未开放浏览器白名单，中央验证会拒绝该请求。配套的 GuYi PHP WebApp 对接包还会在非 iOS 设备访问入口、或 iOS 普通浏览器未处于主屏幕独立模式时，主动调用中央云黑接口提交访客 IP 与环境指纹；如果验证违规请求同时提供卡密，则还会封禁该卡密。其他语言不声明 `client_language=php` 时不会触发这项 iOS 环境判断。
+
+注意：中央云黑名单是全局名单；IP/设备一旦拉黑，使用相同 IP/设备的其他语言客户端也可能被黑名单规则拦截。`client_language` 由请求方声明，并不能可靠证明实际编程语言；更强的隔离需要服务端持有的独立凭据或按应用隔离的黑名单策略。
+
 更多语言对接示例（C++, Rust, Go, Flutter, 易语言 等）请查看 [官方 API 文档](https://guyi-access-wed.pages.dev/#docs)。
 
 ---

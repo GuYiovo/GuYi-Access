@@ -145,7 +145,7 @@
         }
 
         const verElement = document.querySelector('.sider-logo .logo-info span:nth-child(2)');
-        const localVer = verElement ? verElement.innerText.replace(/^v/i, '').trim() : '2026.10.15';
+        const localVer = verElement ? verElement.innerText.replace(/^v/i, '').trim() : '2026.10.22';
         
         fetch('https://cloudvariables.pages.dev/GuYiAccessversionnumbervariable.txt?t=' + Date.now())
             .then(r => r.text())
