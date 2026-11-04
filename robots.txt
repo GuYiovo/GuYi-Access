@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://guyi-access-wed.pages.dev/sitemap.xml
