@@ -5,7 +5,7 @@
 
 ---
 
-[🌐 官方网站](https://guyi-access-wed.pages.dev/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [✈️ TG频道](https://t.me/GuYi0u0)
+[官方网站](https://guyi-access-wed.pages.dev/) · [备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [TG频道](https://t.me/GuYi0u0)
 
 ---
 
