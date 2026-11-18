@@ -5,11 +5,7 @@
 
 ---
 
-![GuYi Access Dashboard](assets/Picture.png)
-
----
-
-[🌐 官方网站](https://sad66.pages.dev/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [✈️ TG频道（主要）](https://t.me/GuYi0u0) · [💬 QQ交流群（次要）](https://qm.qq.com/q/X3suYdjWAA)
+[🌐 官方网站](https://guyi-access-wed.pages.dev/) · [🌍 备用线路](https://guyiovo.github.io/GuYi-Access-wed/) · [✈️ TG频道](https://t.me/GuYi0u0)
 
 ---
 
