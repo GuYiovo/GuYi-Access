@@ -88,8 +88,8 @@
                     
                     <label class="setting-checkbox-card">
                         <div style="flex: 1;">
-                            <div style="font-weight:600; font-size:14px; color:var(--text-primary); margin-bottom: 4px;"><?= t('开启全局动态背景 (实验性)') ?></div>
-                            <div style="font-size:12px; color:var(--text-tertiary); line-height:1.5;"><?= t('在后台显示动态视频背景（PC/移动端自适应），并开启全站毛玻璃拟物风。') ?></div>
+                            <div style="font-weight:600; font-size:14px; color:var(--text-primary); margin-bottom: 4px;"><?= t('开启全局背景 (实验性)') ?></div>
+                            <div style="font-size:12px; color:var(--text-tertiary); line-height:1.5;"><?= t('在后台显示随机壁纸背景（PC/移动端自适应），侧边栏保持清晰，内容区启用轻毛玻璃。') ?></div>
                         </div>
                         <div class="ios-switch">
                             <input type="checkbox" name="enable_bg_image" value="1" <?= $conf_enable_bg=='1'?'checked':'' ?>>

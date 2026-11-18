@@ -20,18 +20,163 @@ try {
 $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $totalPages) $page = $totalPages;
 ?>
 <style>
+/* 移动端：筛选 / 批量操作 / 列表卡片化 */
 @media (max-width: 768px) {
-    .list-top-bar { flex-direction: column !important; align-items: stretch !important; gap: 16px !important; }
-    .list-top-bar form { flex-direction: column !important; width: 100% !important; gap: 12px !important; }
-    .list-top-bar .e-input, .list-top-bar .e-select { max-width: 100% !important; width: 100% !important; height: 48px !important; }
-    .list-top-bar .e-btn { width: 100% !important; height: 48px !important; }
-    
-    .batch-actions { padding: 16px !important; gap: 12px !important; justify-content: space-between !important; }
-    .batch-actions button { flex: 1 1 30% !important; height: 40px !important; font-size: 13px !important; padding: 0 !important; border-radius: 12px !important; }
-    .batch-actions span { display: none; }
-    
-    .pagination-bar { flex-direction: column !important; align-items: stretch !important; gap: 16px !important; }
-    .pagination-bar select { width: 100% !important; text-align: center; }
+    .list-top-bar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 14px !important;
+        margin-bottom: 12px !important;
+        border-radius: 16px !important;
+        position: relative !important;
+        z-index: 40 !important;
+        overflow: visible !important;
+    }
+    .list-top-bar form {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+        width: 100% !important;
+    }
+    .list-top-bar form input[name="q"],
+    .list-top-bar form .e-select,
+    .list-top-bar form .e-btn {
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 44px !important;
+        border-radius: 12px !important;
+    }
+    .list-top-bar .e-status-dropdown {
+        width: 100%;
+        position: relative;
+        z-index: 50;
+    }
+    .list-top-bar .e-dropdown-trigger {
+        width: 100%;
+        min-width: 0;
+        height: 44px;
+        box-sizing: border-box;
+        border-radius: 12px;
+        justify-content: space-between;
+    }
+    .list-top-bar .e-dropdown-menu {
+        z-index: 60;
+        background: #fff !important;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16) !important;
+    }
+    /* 下方批量操作面板不要压住下拉 */
+    .e-card .batch-actions {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* 批量操作：2 列网格 */
+    .batch-actions {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+        padding: 12px !important;
+        background: var(--bg-container) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+    }
+    .batch-actions span { display: none !important; }
+    .batch-actions button {
+        width: 100% !important;
+        height: 40px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        padding: 0 10px !important;
+        border-radius: 12px !important;
+        white-space: nowrap !important;
+        margin: 0 !important;
+    }
+
+    /* 表格桌面显示，卡片移动显示 */
+    .list-desktop-table { display: none !important; }
+    .list-mobile-cards { display: flex !important; flex-direction: column; gap: 10px; padding: 12px; }
+    .m-card {
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        background: var(--bg-container);
+        padding: 14px;
+    }
+    .m-card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .m-card-left {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        min-width: 0;
+        flex: 1;
+    }
+    .m-card-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-weight: 700;
+        color: var(--color-primary);
+        font-size: 14px;
+        word-break: break-all;
+        line-height: 1.4;
+    }
+    .m-card-app {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--text-tertiary);
+    }
+    .m-card-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 12px;
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+    .m-card-meta b {
+        display: block;
+        color: var(--text-tertiary);
+        font-weight: 500;
+        margin-bottom: 3px;
+        font-size: 11px;
+    }
+    .m-card-meta span {
+        color: var(--text-primary);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        word-break: break-all;
+    }
+    .m-card-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+    }
+    .m-card-actions .e-btn {
+        height: 36px;
+        padding: 0;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 10px;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .pagination-bar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        padding: 12px !important;
+    }
+    .pagination-bar select { width: 100% !important; text-align: center; height: 44px !important; border-radius: 12px !important; }
+    .pagination-bar .flex { justify-content: center !important; }
+}
+@media (min-width: 769px) {
+    .list-mobile-cards { display: none !important; }
 }
 </style>
 
@@ -91,7 +236,7 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
             <input type="hidden" name="add_hours" id="addHoursInput"><input type="hidden" name="sub_hours" id="subHoursInput">
         </div>
 
-        <div class="e-table-wrap">
+        <div class="e-table-wrap list-desktop-table">
             <table class="e-table">
                 <thead><tr>
                     <th style="width: 48px; text-align:center;"><input type="checkbox" onclick="toggleAllChecks(this)" style="accent-color: var(--color-primary);"></th>
@@ -127,7 +272,56 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
                 </tbody>
             </table>
         </div>
-        
+
+        <div class="list-mobile-cards">
+            <?php if (empty($cardList)): ?>
+                <div style="text-align:center;padding:36px 12px;color:var(--text-tertiary);font-size:14px;"><?= t('暂无数据') ?></div>
+            <?php endif; ?>
+            <?php foreach ($cardList as $card): ?>
+                <?php
+                    if ($card['status'] == 2) $st = '<span class="e-tag e-tag-red">' . t('封禁') . '</span>';
+                    elseif ($card['status'] == 1) $st = (strtotime($card['expire_time']) > time()) ? (empty($card['device_hash']) ? '<span class="e-tag e-tag-warning">' . t('待绑定') . '</span>' : '<span class="e-tag e-tag-green">' . t('使用中') . '</span>') : '<span class="e-tag">' . t('已过期') . '</span>';
+                    else $st = '<span class="e-tag">' . t('闲置') . '</span>';
+                    $appName = $card['app_id']>0 ? htmlspecialchars($card['app_name']) : '-';
+                    $used = !empty($card['used_time']) ? date('y-m-d H:i', strtotime($card['used_time'])) : '-';
+                    $exp = !empty($card['expire_time']) ? date('y-m-d H:i', strtotime($card['expire_time'])) : '-';
+                    $dev = ($card['status']==1 && !empty($card['device_hash'])) ? substr($card['device_hash'],0,10).'...' : '-';
+                    $note = !empty($card['notes']) ? htmlspecialchars($card['notes']) : '-';
+                ?>
+                <div class="m-card">
+                    <div class="m-card-top">
+                        <div class="m-card-left">
+                            <input type="checkbox" name="ids[]" value="<?= $card['id'] ?>" class="row-check" style="margin-top:3px;accent-color:var(--color-primary);width:16px;height:16px;">
+                            <div style="min-width:0;">
+                                <div class="m-card-code" onclick="copy('<?= htmlspecialchars($card['card_code'], ENT_QUOTES) ?>')"><?= htmlspecialchars($card['card_code']) ?></div>
+                                <div class="m-card-app"><?= $appName ?></div>
+                            </div>
+                        </div>
+                        <div><?= $st ?></div>
+                    </div>
+                    <div class="m-card-meta">
+                        <div><b><?= t('激活时间') ?></b><span><?= $used ?></span></div>
+                        <div><b><?= t('到期时间') ?></b><span<?= ($card['status']==1 && strtotime($card['expire_time'])<time())?' style="color:var(--color-error)"':'' ?>><?= $exp ?></span></div>
+                        <div><b><?= t('设备') ?></b><span><?= htmlspecialchars($dev) ?></span></div>
+                        <div><b><?= t('备注') ?></b><span><?= $note ?></span></div>
+                    </div>
+                    <div class="m-card-actions">
+                        <?php if ($card['status'] == 1 && !empty($card['device_hash'])): ?>
+                            <button type="button" class="e-btn e-btn-default" onclick="singleActionForm('unbind_card',<?= $card['id'] ?>)"><?= t('解绑') ?></button>
+                        <?php else: ?>
+                            <button type="button" class="e-btn e-btn-default" disabled style="opacity:.45;"><?= t('解绑') ?></button>
+                        <?php endif; ?>
+                        <?php if ($card['status'] != 2): ?>
+                            <button type="button" class="e-btn e-btn-default" style="color:var(--color-warning);" onclick="singleActionForm('ban_card',<?= $card['id'] ?>)"><?= t('封禁') ?></button>
+                        <?php else: ?>
+                            <button type="button" class="e-btn e-btn-default" style="color:var(--color-success);" onclick="singleActionForm('unban_card',<?= $card['id'] ?>)"><?= t('解封') ?></button>
+                        <?php endif; ?>
+                        <button type="button" class="e-btn e-btn-default" style="color:var(--color-error);" onclick="singleActionForm('del_card',<?= $card['id'] ?>)"><?= t('删除') ?></button>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
         <div class="flex justify-between items-center flex-wrap gap-4 pagination-bar" style="padding: 16px 24px; border-top: 1px solid var(--border-color);">
             <?php $qp = ['tab'=>'list','filter'=>$filterStr,'sort'=>$sortFilter]; if(!empty($_GET['q'])) $qp['q']=$_GET['q']; if($appFilter!==null) $qp['app_id']=$appFilter; if($typeFilter!==null) $qp['type']=$typeFilter; $plu = $qp; $plu['page']=1; ?>
             <select class="e-select" style="width: auto; height: 36px; padding: 0 32px 0 12px;" onchange="window.location.href='?<?= http_build_query($plu) ?>&limit='+this.value">
@@ -146,11 +340,24 @@ $totalPages = ceil($totalCards / $perPage); if ($totalPages > 0 && $page > $tota
 </div>
 
 <style>
-.e-status-dropdown { position: relative; display: inline-block; font-size: 14px; z-index: 99; }
+.e-status-dropdown { position: relative; display: inline-block; font-size: 14px; z-index: 120; }
 .e-dropdown-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 12px; cursor: pointer; color: var(--text-primary, #1e293b); user-select: none; transition: all 0.3s ease; min-width: 140px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .e-dropdown-trigger:hover { border-color: var(--color-primary, #3b82f6); background: rgba(255, 255, 255, 0.9); }
-.e-dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 8px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15); min-width: 100%; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); overflow: hidden; }
-@media (max-width: 767px) { .e-dropdown-menu { left: 0; right: auto; width: 100%; } }
+.e-dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 8px; background: #ffffff; border: 1px solid rgba(226, 232, 240, 0.9); border-radius: 12px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14); min-width: 100%; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); overflow: hidden; z-index: 130; }
+@media (max-width: 767px) {
+    .e-dropdown-menu { left: 0; right: auto; width: 100%; z-index: 130; }
+    /* 覆盖全局 header 的 .e-card{overflow:hidden}，并抬高层级，避免状态下拉被下方面板挡住 */
+    .list-top-bar.e-card,
+    .e-card.list-top-bar {
+        overflow: visible !important;
+        z-index: 50 !important;
+        position: relative !important;
+    }
+    .list-top-bar + .e-card {
+        position: relative;
+        z-index: 1;
+    }
+}
 .e-dropdown-menu a { display: block; padding: 12px 16px; color: var(--text-secondary, #475569); text-decoration: none; transition: background 0.2s, color 0.2s; border-bottom: 1px solid rgba(241, 245, 249, 0.5); }
 .e-dropdown-menu a:last-child { border-bottom: none; }
 .e-dropdown-menu a:hover, .e-dropdown-menu a.active { background: rgba(59, 130, 246, 0.1); color: var(--color-primary, #3b82f6); font-weight: 600; }

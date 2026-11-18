@@ -66,8 +66,15 @@ $sysConf = $db->getSystemSettings();
 $conf_site_title = $sysConf['site_title'] ?? 'GuYi Access';
 $conf_favicon = !empty($sysConf['favicon']) ? $sysConf['favicon'] : 'https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png';
 $conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : 'https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png';
-$conf_bg_pc = $sysConf['bg_pc'] ?? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/DesktopWallpaper.mp4';
-$conf_bg_mobile = $sysConf['bg_mobile'] ?? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/MobileWallpaper.mp4';
+// 登录页使用图片壁纸（PC/移动），自动忽略历史遗留的 mp4 视频地址
+$conf_bg_pc = 'https://www.loliapi.com/acg/pc/';
+$conf_bg_mobile = 'https://www.loliapi.com/acg/pe/';
+if (!empty($sysConf['bg_pc']) && stripos($sysConf['bg_pc'], '.mp4') === false) {
+    $conf_bg_pc = $sysConf['bg_pc'];
+}
+if (!empty($sysConf['bg_mobile']) && stripos($sysConf['bg_mobile'], '.mp4') === false) {
+    $conf_bg_mobile = $sysConf['bg_mobile'];
+}
 $conf_bg_blur = $sysConf['bg_blur'] ?? '1';
 
 $login_error = null;

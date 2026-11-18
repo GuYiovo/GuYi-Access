@@ -133,8 +133,8 @@
 </style>
 <?php if ($conf_enable_bg == '1'): ?>
 <style>
-    .admin-layout { position: relative; isolation: isolate; }
-    .admin-bg-video {
+    body { background: #f1f5f9; }
+    .admin-bg-image {
         position: fixed;
         inset: 0;
         width: 100%;
@@ -144,15 +144,32 @@
         pointer-events: none;
         opacity: <?= htmlspecialchars((string)$conf_bg_img_opacity) ?>;
     }
-    .admin-sider, .admin-main, .m-nav, .m-nav-more-overlay { position: relative; z-index: 1; }
+    .admin-layout { position: relative; z-index: 1; background: transparent !important; }
+    /* 侧边栏保持不透明，避免布局“镂空”感 */
+    .admin-sider {
+        background: rgba(255, 255, 255, 0.92) !important;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
     .admin-main { background: transparent !important; }
-    .admin-header { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.48) !important; }
-    .e-card, .pro-stat-card { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.6) !important; box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05) !important; }
-    .e-table thead, .e-table th, thead[style*="var(--bg-layout)"], div[style*="var(--bg-layout)"] { background: rgba(255, 255, 255, <?= max(0, $conf_card_opacity - 0.3) ?>) !important; }
-    .e-input, .e-select, .e-textarea { background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    .admin-header {
+        background: rgba(255, 255, 255, <?= max(0.75, (float)$conf_card_opacity) ?>) !important;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.55) !important;
+    }
+    .e-card, .pro-stat-card {
+        background: rgba(255, 255, 255, <?= max(0.72, (float)$conf_card_opacity) ?>) !important;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.55) !important;
+    }
     @media (max-width: 768px) {
-        .m-nav, .m-nav-more-overlay { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.5) !important; }
-        .m-nav-more-item { background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important; }
+        .m-nav, .m-nav-more-overlay {
+            background: rgba(255, 255, 255, <?= max(0.8, (float)$conf_card_opacity) ?>) !important;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
     }
 </style>
 <?php endif; ?>
@@ -178,20 +195,15 @@ document.addEventListener('DOMContentLoaded', function() {
 </head>
 <body>
 <?php if ($conf_enable_bg == '1'): ?>
-<video class="admin-bg-video" autoplay muted loop playsinline webkit-playsinline
-    poster=""
-    data-src-pc="https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/DesktopWallpaper.mp4"
-    data-src-mobile="https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/MobileWallpaper.mp4">
-</video>
+<img class="admin-bg-image" alt=""
+    data-src-pc="https://www.loliapi.com/acg/pc/"
+    data-src-mobile="https://www.loliapi.com/acg/pe/">
 <script>
 (function () {
-    var v = document.querySelector('.admin-bg-video');
-    if (!v) return;
+    var img = document.querySelector('.admin-bg-image');
+    if (!img) return;
     var isMobile = window.matchMedia('(max-width: 768px)').matches;
-    v.src = isMobile ? v.getAttribute('data-src-mobile') : v.getAttribute('data-src-pc');
-    v.load();
-    var p = v.play();
-    if (p && typeof p.catch === 'function') p.catch(function () {});
+    img.src = isMobile ? img.getAttribute('data-src-mobile') : img.getAttribute('data-src-pc');
 })();
 </script>
 <?php endif; ?>
