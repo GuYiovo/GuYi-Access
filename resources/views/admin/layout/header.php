@@ -17,13 +17,13 @@
 
 <title><?= htmlspecialchars($currentTitle) ?> - <?= htmlspecialchars($conf_site_title) ?></title>
 
-<!-- 图标设置：覆盖多设备尺寸（iOS主屏图标、通用favicon） -->
-<!-- 智能调用：直接读取后台设置中的头像/图标，更改头像后桌面图标自动更新 -->
-<link rel="apple-touch-icon" href="<?= htmlspecialchars($conf_avatar) ?>">
-<link rel="icon" type="image/jpeg" href="<?= htmlspecialchars($conf_favicon) ?>">
-<link rel="icon" href="<?= htmlspecialchars($conf_favicon) ?>">
+<!-- 图标设置：统一站点 Logo -->
+<link rel="apple-touch-icon" href="https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png">
+<link rel="icon" type="image/png" href="https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png">
+<link rel="icon" href="https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png">
 
-<script src="https://cdn.jsdelivr.net/npm/@phosphor-icons/web"></script>
+<link rel="stylesheet" href="../assets/vendor/phosphor/regular/style.css">
+<link rel="stylesheet" href="../assets/vendor/phosphor/fill/style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="../assets/css/cards.css?v=<?= time() ?>" rel="stylesheet">
 <style>
@@ -35,7 +35,6 @@
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--color-primary); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: transform 0.1s; }
     input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
     
-    .admin-sider { box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06) !important; border-right: 1px solid var(--border-color) !important; z-index: 50; }
     .admin-layout.sider-collapsed .sider-logo .logo-info { display: none !important; }
     
     /* ================= 移动端沉浸式原生 App 级别优化 ================= */
@@ -134,17 +133,24 @@
 </style>
 <?php if ($conf_enable_bg == '1'): ?>
 <style>
-    .admin-main { position: relative; z-index: 1; }
-    /* 默认 PC 端横屏背景图 */
-    .admin-main::before { content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url('https://www.loliapi.com/acg/pc/') center/cover fixed; opacity: <?= htmlspecialchars($conf_bg_img_opacity) ?>; pointer-events: none; z-index: -1; }
-    .admin-header { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important; }
+    .admin-layout { position: relative; isolation: isolate; }
+    .admin-bg-video {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 0;
+        pointer-events: none;
+        opacity: <?= htmlspecialchars((string)$conf_bg_img_opacity) ?>;
+    }
+    .admin-sider, .admin-main, .m-nav, .m-nav-more-overlay { position: relative; z-index: 1; }
+    .admin-main { background: transparent !important; }
+    .admin-header { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.48) !important; }
     .e-card, .pro-stat-card { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.6) !important; box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05) !important; }
     .e-table thead, .e-table th, thead[style*="var(--bg-layout)"], div[style*="var(--bg-layout)"] { background: rgba(255, 255, 255, <?= max(0, $conf_card_opacity - 0.3) ?>) !important; }
     .e-input, .e-select, .e-textarea { background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-    
-    @media (max-width: 768px) { 
-        /* 手机端竖屏背景图完美适配 */
-        .admin-main::before { background-image: url('https://www.loliapi.com/acg/pe/'); }
+    @media (max-width: 768px) {
         .m-nav, .m-nav-more-overlay { background: rgba(255, 255, 255, <?= htmlspecialchars($conf_card_opacity) ?>) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.5) !important; }
         .m-nav-more-item { background: rgba(255, 255, 255, <?= max(0.1, $conf_card_opacity - 0.1) ?>) !important; }
     }
@@ -171,13 +177,31 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 </head>
 <body>
+<?php if ($conf_enable_bg == '1'): ?>
+<video class="admin-bg-video" autoplay muted loop playsinline webkit-playsinline
+    poster=""
+    data-src-pc="https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/DesktopWallpaper.mp4"
+    data-src-mobile="https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/MobileWallpaper.mp4">
+</video>
+<script>
+(function () {
+    var v = document.querySelector('.admin-bg-video');
+    if (!v) return;
+    var isMobile = window.matchMedia('(max-width: 768px)').matches;
+    v.src = isMobile ? v.getAttribute('data-src-mobile') : v.getAttribute('data-src-pc');
+    v.load();
+    var p = v.play();
+    if (p && typeof p.catch === 'function') p.catch(function () {});
+})();
+</script>
+<?php endif; ?>
 <div class="admin-layout">
     <aside class="admin-sider">
         <div class="sider-logo">
-            <img src="<?= htmlspecialchars($conf_avatar) ?>" alt="Logo">
+            <img src="https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png" alt="Logo">
             <div class="logo-info" style="display: flex; flex-direction: column; justify-content: center; overflow: hidden; white-space: nowrap; transition: all 0.3s;">
                 <span class="logo-text" style="line-height: 1.2;"><?= htmlspecialchars(mb_strimwidth($conf_site_title, 0, 10, '..')) ?></span>
-                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.10.22</span>
+                <span style="font-size: 11px; color: var(--color-primary); font-family: 'Inter', monospace; font-weight: 600; margin-top: 2px; opacity: 0.8;">v2026.11.18</span>
             </div>
         </div>
         <div class="sider-menu">

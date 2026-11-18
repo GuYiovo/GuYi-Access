@@ -67,11 +67,6 @@ $app_key     = isset($data['app_key']) ? trim($data['app_key']) : '';
 $device      = !empty($data['device_hash']) ? trim($data['device_hash']) : (isset($data['device']) ? trim($data['device']) : '');
 $action      = isset($data['action']) ? $data['action'] : 'verify';
 $custom_data = isset($data['custom_data']) ? trim($data['custom_data']) : null;
-// 仅当 PHP 对接显式声明 client_language=php（或通过 X-Guyi-Client-Language 请求头声明）时启用 iOS Web App 限制。
-$client_language = strtolower(trim((string)($data['client_language'] ?? '')));
-if ($client_language === '') {
-    $client_language = strtolower(trim((string)($_SERVER['HTTP_X_GUYI_CLIENT_LANGUAGE'] ?? '')));
-}
 
 try {
     if (!$db) {
@@ -143,33 +138,37 @@ try {
     }
     // ==========================================
 
+    // 云黑仅允许管理端通过 api_token 调用，禁止客户端自助拉黑（避免误封/滥用）
     if ($action === 'ban_machine' || $action === 'blacklist') {
-        $reason = isset($data['reason']) ? trim($data['reason']) : '触发客户端安全防御策略';
-        $blacklistIp = $rate_ip;
+        $providedToken = isset($data['api_token']) ? trim((string)$data['api_token']) : '';
+        $adminTokenForBlacklist = 'GuYiAdmin123';
+        if (!hash_equals($adminTokenForBlacklist, $providedToken)) {
+            output_json(403, '无权操作：云黑接口需要管理对接密钥(api_token)');
+        }
 
-        // PHP 中转请求必须显式提交访客 IP，并提供管理对接令牌。
-        // 没有 client_ip 的旧调用仍沿用原行为（使用请求到达中央 API 时的来源 IP）。
+        $reason = isset($data['reason']) ? trim($data['reason']) : '管理员手动拉黑';
+        $blacklistIp = $rate_ip;
         if (isset($data['client_ip']) && trim((string)$data['client_ip']) !== '') {
-            $providedToken = isset($data['api_token']) ? trim((string)$data['api_token']) : '';
-            $adminTokenForBlacklist = 'GuYiAdmin123'; // Must match the PHP integration token.
-            if (!hash_equals($adminTokenForBlacklist, $providedToken)) {
-                output_json(403, '无权操作：云黑接口通信密钥错误或未提供');
-            }
             $candidateIp = filter_var(trim((string)$data['client_ip']), FILTER_VALIDATE_IP);
             if ($candidateIp === false) output_json(400, '访客 IP 格式无效');
             $blacklistIp = $candidateIp;
         }
 
-        if (!empty($device)) {
-            try {
-                $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('device', ?, ?)")->execute([$device, $reason]);
-                $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('ip', ?, ?)")->execute([$blacklistIp, $reason]);
-                output_json(200, '设备与访客 IP 已被系统成功拉黑', null);
-            } catch(Exception $e) {
-                output_json(500, '封禁执行失败');
-            }
+        if (empty($device) && empty($blacklistIp)) {
+            output_json(400, '请提供 device_hash 或 client_ip');
         }
-        output_json(400, '未提供需要拉黑的设备特征码(device_hash)');
+
+        try {
+            if (!empty($device)) {
+                $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('device', ?, ?)")->execute([$device, $reason]);
+            }
+            if (!empty($blacklistIp)) {
+                $db->pdo->prepare("INSERT IGNORE INTO blacklists (type, value, reason) VALUES ('ip', ?, ?)")->execute([$blacklistIp, $reason]);
+            }
+            output_json(200, '已成功写入云黑名单', null);
+        } catch (Exception $e) {
+            output_json(500, '封禁执行失败');
+        }
     }
 
     if ($action === 'unbind') {
@@ -215,7 +214,7 @@ try {
         output_json(200, 'OK', ['expire_time' => '2099-12-31 23:59:59', 'update' => $updateData, 'variables' => $variables], $app_key);
     }
     
-    $result = $db->verifyCard($card_code, $device, $app_key, $custom_data, $client_language);
+    $result = $db->verifyCard($card_code, $device, $app_key, $custom_data);
     
     if ($result['success']) {
         $variables = [];

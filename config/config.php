@@ -7,7 +7,23 @@ if (!defined('BASE_PATH')) {
 }
 
 ini_set('session.gc_maxlifetime', 315360000);
-session_set_cookie_params(315360000);
+// 明确指定 path=/ 与 SameSite，避免子目录 session 丢失导致登录 CSRF 失败
+$__secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+         || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+         || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+if (PHP_VERSION_ID >= 70300) {
+    session_set_cookie_params([
+        'lifetime' => 315360000,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => $__secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+} else {
+    session_set_cookie_params(315360000, '/', '', $__secure, true);
+}
+unset($__secure);
 
 // If installation has not completed, guide users to the installer.
 // The root install.php remains as a compatibility entry point.

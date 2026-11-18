@@ -260,7 +260,7 @@ if (!class_exists('Database')) {
             return $stmt->fetch(PDO::FETCH_ASSOC);
         }
 
-        public function verifyCard($cardCode, $deviceHash, $appKey = null, $customData = null, $clientLanguage = null) {
+        public function verifyCard($cardCode, $deviceHash, $appKey = null, $customData = null) {
             if (mt_rand(1, 100) === 1) {
                 $this->cleanupExpiredDevices();
             }
@@ -294,24 +294,6 @@ if (!class_exists('Database')) {
             
             if (!$card) return ['success' => false, 'message' => '无效的卡密 (或不属于当前应用)'];
             if ($card['status'] == 2) return ['success' => false, 'message' => '此卡密已被管理员封禁'];
-
-         
-            // iOS Web App 环境限制仅对明确声明为 PHP 的对接请求生效。
-            // C/C++、Python、Go、Java、Node.js 等其他语言未声明 client_language=php 时不受此规则影响。
-            // 该字段用于选择策略，不应被当作可靠的客户端语言证明；若需强制策略，请使用独立凭据/服务端配置。
-            $clientLanguage = strtolower(trim((string)$clientLanguage));
-            $is_php_integration = ($clientLanguage === 'php');
-            $is_ios_webapp = strpos($ua, '[IOS_WEBAPP_VERIFIED]') !== false;
-            $browser_whitelist = isset($card['browser_whitelist']) ? $card['browser_whitelist'] : 0;
-
-            if ($is_php_integration && !$is_ios_webapp && (int)$browser_whitelist !== 1) {
-                $this->logUsage($cardCode, $card['card_type'], $deviceHash, $ip, $ua, '拦截：PHP 对接未通过 iOS Web App 校验', $appNameForLog);
-                return [
-                    'success' => false,
-                    'message' => '环境受限：PHP 对接请求必须包含 iOS Web App 验证标记，或联系管理员开放浏览器白名单。'
-                ];
-            }
-            // ==========================================
 
             // 4. 判断活跃状态及心跳
             $deviceStmt = $this->pdo->prepare("SELECT * FROM active_devices WHERE device_hash = ? AND status = 1 AND expire_time > NOW() AND app_id = ?");

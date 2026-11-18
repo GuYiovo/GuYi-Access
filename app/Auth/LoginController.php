@@ -4,7 +4,26 @@ error_reporting(0);
 
 require_once dirname(__DIR__, 2) . '/config/config.php';
 require_once dirname(__DIR__, 2) . '/app/Infrastructure/Database/Database.php';
-session_start();
+
+// 强制设置 session cookie 作用于全站路径，避免子目录导致会话丢失（CSRF 校验失败“页面已过期”）
+$secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+       || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+       || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+if (PHP_VERSION_ID >= 70300) {
+    session_set_cookie_params([
+        'lifetime' => 315360000,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+} else {
+    session_set_cookie_params(315360000, '/', '', $secure, true);
+}
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 try { $db = new Database(); } catch (Throwable $e) {
     die("系统维护中，请稍后重试。");
@@ -45,10 +64,10 @@ if (isset($_SESSION['admin_logged_in'])) { header('Location: ../admin/cards.php'
 
 $sysConf = $db->getSystemSettings();
 $conf_site_title = $sysConf['site_title'] ?? 'GuYi Access';
-$conf_favicon = !empty($sysConf['favicon']) ? $sysConf['favicon'] : 'https://q1.qlogo.cn/g?b=qq&nk=156440000&s=640';
-$conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : 'https://q1.qlogo.cn/g?b=qq&nk=156440000&s=640';
-$conf_bg_pc = $sysConf['bg_pc'] ?? 'https://www.loliapi.com/acg/pc/';
-$conf_bg_mobile = $sysConf['bg_mobile'] ?? 'https://www.loliapi.com/acg/pe/';
+$conf_favicon = !empty($sysConf['favicon']) ? $sysConf['favicon'] : 'https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png';
+$conf_avatar = !empty($sysConf['admin_avatar']) ? $sysConf['admin_avatar'] : 'https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png';
+$conf_bg_pc = $sysConf['bg_pc'] ?? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/DesktopWallpaper.mp4';
+$conf_bg_mobile = $sysConf['bg_mobile'] ?? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/MobileWallpaper.mp4';
 $conf_bg_blur = $sysConf['bg_blur'] ?? '1';
 
 $login_error = null;

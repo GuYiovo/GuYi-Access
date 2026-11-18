@@ -1,36 +1,61 @@
 <?php
-$a_q = base64_decode('MTU2N'.'DQwMD'.'Aw');
-$a_u = base64_decode('aHR0cHM6Ly9'.'4bi0tanBy'.'MDcxZS5'.'0b3Av');
-$a_a = base64_decode('aHR0cHM6Ly9'.'xMi5xbG9nby5j'.'bi9oZWFkaW1n'.'X2RsP2RzdF9'.'1aW49MTU2NDQw'.'MDAwJnNwZWM'.'9NjQw');
+$logo = 'https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png';
+$site_main = 'https://guyi-access-wed.pages.dev/';
+$site_backup = 'https://guyiovo.github.io/GuYi-Access-wed/';
+$site_personal = 'https://sad66.pages.dev/';
+$tg = 'https://t.me/GuYi0u0';
+$license_url = 'https://polyformproject.org/licenses/perimeter/1.0.1';
+$github = 'https://github.com/GuYiovo/GuYi-Access';
 ?>
-<div class="e-card" style="max-width: 600px; margin: 40px auto; text-align: center; padding: 48px 24px; border:none; background:transparent; box-shadow:none;">
-    <img src="<?= htmlspecialchars($a_a) ?>" style="width:100px; height:100px; border-radius:50%; margin-bottom:24px; box-shadow:0 12px 24px rgba(0,0,0,0.12); transition: transform 0.3s;" onmouseover="this.style.transform='scale(1.05) rotate(5deg)'" onmouseout="this.style.transform='scale(1) rotate(0)'">
-    <h2 style="font-size:28px; font-weight:700; margin:0 0 8px 0; color:var(--text-primary); letter-spacing:-0.5px;"><?= base64_decode('R3VZaSBBY2Nlc3MgUHJv') ?></h2>
-    <p style="color:var(--text-secondary); margin:0 0 32px 0; font-size:15px;">工业级高可用 · 多应用验证分发架构</p>
-    
-    <div style="background: var(--bg-layout); border-radius: 16px; padding: 24px; border: 1px solid var(--border-color); display: inline-block; text-align: left; min-width: 280px; width: 100%; max-width: 360px;">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom: 20px;">
-            <div style="width:40px; height:40px; border-radius:12px; background:var(--color-primary-bg); color:var(--color-primary); display:flex; align-items:center; justify-content:center; font-size:22px;"><i class="ph-fill ph-user-circle"></i></div>
+<div class="e-card" style="max-width: 520px; margin: 28px auto; text-align: center; padding: 40px 20px 32px; border:none; background:transparent; box-shadow:none;">
+    <img src="<?= htmlspecialchars($logo) ?>" alt="Logo" style="width:88px; height:88px; border-radius:50%; object-fit:cover; margin-bottom:20px; box-shadow:0 12px 28px rgba(0,0,0,0.14); transition: transform 0.3s;" onmouseover="this.style.transform='scale(1.06)'" onmouseout="this.style.transform='scale(1)'">
+    <h2 style="font-size:26px; font-weight:700; margin:0 0 6px 0; color:var(--text-primary); letter-spacing:-0.4px;">GuYi Access Pro</h2>
+    <p style="color:var(--text-secondary); margin:0 0 28px 0; font-size:14px; line-height:1.5;">工业级高可用 · 多应用验证分发架构</p>
+
+    <div style="background: var(--bg-layout); border-radius: 18px; padding: 8px 0; border: 1px solid var(--border-color); text-align: left; width: 100%; max-width: 400px; margin: 0 auto; overflow: hidden;">
+        <!-- Author header -->
+        <div style="display:flex; align-items:center; gap:12px; padding: 16px 20px 14px;">
+            <div style="width:40px; height:40px; border-radius:12px; background:var(--color-primary-bg); color:var(--color-primary); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0;"><i class="ph-fill ph-user-circle"></i></div>
             <div>
-                <div style="font-size:12px; color:var(--text-tertiary); font-weight:600; text-transform:uppercase; letter-spacing: 0.5px;">AUTHOR</div>
-                <div style="font-size:16px; font-weight:600; color:var(--text-primary);">核心架构设计</div>
+                <div style="font-size:11px; color:var(--text-tertiary); font-weight:600; text-transform:uppercase; letter-spacing: 0.6px;">AUTHOR</div>
+                <div style="font-size:15px; font-weight:600; color:var(--text-primary); margin-top:1px;">核心架构设计 · GuYiovo</div>
             </div>
         </div>
-        
-        <div style="display:flex; flex-direction:column; gap: 14px; font-size: 14px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px dashed var(--border-color-input); padding-bottom: 12px;">
-                <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-chat-circle-dots" style="vertical-align:-2px; margin-right:4px;"></i> 作者 QQ</span>
-                <span class="mono font-medium" style="color:var(--color-primary); cursor:pointer; background: var(--color-primary-bg); padding: 4px 8px; border-radius: 6px;" onclick="copy('<?= $a_q ?>')"><?= $a_q ?></span>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px dashed var(--border-color-input); padding-bottom: 12px;">
-                <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-globe" style="vertical-align:-2px; margin-right:4px;"></i> 官方网站</span>
-                <a href="<?= htmlspecialchars($a_u) ?>" target="_blank" style="color:var(--color-primary); text-decoration:none; display:flex; align-items:center; gap:4px; font-weight:600;">点击访问 <i class="ph ph-arrow-square-out"></i></a>
-            </div>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; padding-top: 4px;">
-                <span style="color:var(--text-secondary); font-weight: 500;"><i class="ph ph-shield-check" style="vertical-align:-2px; margin-right:4px;"></i> 版权声明</span>
-                <span style="color:var(--text-tertiary); font-size: 13px;">保留所有权利</span>
-            </div>
+
+        <div style="height:1px; background:var(--border-color); margin: 0 16px;"></div>
+
+        <!-- Links -->
+        <div style="display:flex; flex-direction:column; padding: 6px 8px 8px;">
+            <a href="<?= htmlspecialchars($site_main) ?>" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding: 12px 12px; border-radius:12px; text-decoration:none; color:inherit; transition: background .15s;" onmouseover="this.style.background='var(--color-primary-bg)'" onmouseout="this.style.background='transparent'">
+                <span style="color:var(--text-secondary); font-weight:500; font-size:14px; display:flex; align-items:center; gap:8px;"><i class="ph ph-globe" style="font-size:18px;"></i> 官方网站</span>
+                <span style="color:var(--color-primary); font-weight:600; font-size:13px; display:flex; align-items:center; gap:4px;">访问 <i class="ph ph-arrow-square-out"></i></span>
+            </a>
+            <a href="<?= htmlspecialchars($site_backup) ?>" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding: 12px 12px; border-radius:12px; text-decoration:none; color:inherit; transition: background .15s;" onmouseover="this.style.background='var(--color-primary-bg)'" onmouseout="this.style.background='transparent'">
+                <span style="color:var(--text-secondary); font-weight:500; font-size:14px; display:flex; align-items:center; gap:8px;"><i class="ph ph-link" style="font-size:18px;"></i> 备用官网</span>
+                <span style="color:var(--color-primary); font-weight:600; font-size:13px; display:flex; align-items:center; gap:4px;">访问 <i class="ph ph-arrow-square-out"></i></span>
+            </a>
+            <a href="<?= htmlspecialchars($site_personal) ?>" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding: 12px 12px; border-radius:12px; text-decoration:none; color:inherit; transition: background .15s;" onmouseover="this.style.background='var(--color-primary-bg)'" onmouseout="this.style.background='transparent'">
+                <span style="color:var(--text-secondary); font-weight:500; font-size:14px; display:flex; align-items:center; gap:8px;"><i class="ph ph-user" style="font-size:18px;"></i> 作者个人站</span>
+                <span style="color:var(--color-primary); font-weight:600; font-size:13px; display:flex; align-items:center; gap:4px;">访问 <i class="ph ph-arrow-square-out"></i></span>
+            </a>
+            <a href="<?= htmlspecialchars($tg) ?>" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding: 12px 12px; border-radius:12px; text-decoration:none; color:inherit; transition: background .15s;" onmouseover="this.style.background='var(--color-primary-bg)'" onmouseout="this.style.background='transparent'">
+                <span style="color:var(--text-secondary); font-weight:500; font-size:14px; display:flex; align-items:center; gap:8px;"><i class="ph ph-paper-plane-tilt" style="font-size:18px;"></i> Telegram 频道</span>
+                <span style="color:var(--color-primary); font-weight:600; font-size:13px; display:flex; align-items:center; gap:4px;">@GuYi0u0 <i class="ph ph-arrow-square-out"></i></span>
+            </a>
+            <a href="<?= htmlspecialchars($github) ?>" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; padding: 12px 12px; border-radius:12px; text-decoration:none; color:inherit; transition: background .15s;" onmouseover="this.style.background='var(--color-primary-bg)'" onmouseout="this.style.background='transparent'">
+                <span style="color:var(--text-secondary); font-weight:500; font-size:14px; display:flex; align-items:center; gap:8px;"><i class="ph ph-github-logo" style="font-size:18px;"></i> GitHub</span>
+                <span style="color:var(--color-primary); font-weight:600; font-size:13px; display:flex; align-items:center; gap:4px;">仓库 <i class="ph ph-arrow-square-out"></i></span>
+            </a>
+        </div>
+
+        <div style="height:1px; background:var(--border-color); margin: 0 16px;"></div>
+
+        <!-- License -->
+        <div style="padding: 14px 20px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <span style="color:var(--text-secondary); font-weight:500; font-size:14px; display:flex; align-items:center; gap:8px;"><i class="ph ph-shield-check" style="font-size:18px;"></i> 许可证</span>
+            <a href="<?= htmlspecialchars($license_url) ?>" target="_blank" rel="noopener" style="color:var(--text-tertiary); font-size:12px; text-decoration:none; text-align:right; line-height:1.35;" title="PolyForm Perimeter License 1.0.1">
+                PolyForm Perimeter<br>1.0.1
+            </a>
         </div>
     </div>
 </div>

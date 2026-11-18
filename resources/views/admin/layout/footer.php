@@ -145,7 +145,7 @@
         }
 
         const verElement = document.querySelector('.sider-logo .logo-info span:nth-child(2)');
-        const localVer = verElement ? verElement.innerText.replace(/^v/i, '').trim() : '2026.10.22';
+        const localVer = verElement ? verElement.innerText.replace(/^v/i, '').trim() : '2026.11.18';
         
         fetch('https://cloudvariables.pages.dev/GuYiAccessversionnumbervariable.txt?t=' + Date.now())
             .then(r => r.text())
@@ -176,11 +176,10 @@
                     const overlay = document.createElement('div');
                     overlay.id = 'sys-update-modal';
                     overlay.className = 'modal-overlay';
-                    overlay.style.display = 'flex';
-                    overlay.style.zIndex = '9999';
+                    overlay.style.cssText = 'display:flex;z-index:9999;align-items:center;justify-content:center;padding:20px;animation:sysUpdateFadeIn .28s ease-out both;';
                     
                     overlay.innerHTML = `
-                        <div class="modal-content" style="max-width: 380px; margin: auto; animation: modalSlideUp 0.35s cubic-bezier(0.2, 1, 0.3, 1);">
+                        <div class="modal-content" style="max-width: 380px; width: 100%; margin: auto; border-radius: 20px; animation: sysUpdateJelly 0.55s cubic-bezier(0.22, 1.4, 0.36, 1) both;">
                             <div class="modal-header" style="border-bottom: none; text-align: center; padding-top: 24px; font-size: 20px;">
                                 <i class="ph-fill ph-rocket-launch" style="color: var(--color-primary); margin-right: 8px;"></i>发现新版本
                             </div>
@@ -199,10 +198,24 @@
                                     </div>
                                 </div>
                                 
-                                <div style="background: rgba(59, 130, 246, 0.05); border: 1px dashed rgba(59, 130, 246, 0.2); padding: 14px; border-radius: 12px; margin-bottom: 24px; text-align: left;">
+                                <div style="background: rgba(59, 130, 246, 0.05); border: 1px dashed rgba(59, 130, 246, 0.2); padding: 14px; border-radius: 12px; margin-bottom: 12px; text-align: left;">
                                     <div style="font-size: 13px; color: var(--color-primary); font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;"><i class="ph-fill ph-lightbulb"></i> 小白更新指南</div>
                                     <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
                                         直接将当前所有目录删除，重新上传新版本的压缩包解压安装即可。<br><span style="color:var(--color-success); font-weight:500;">系统数据全部存放在数据库中，完全不会丢失，请放心更新。</span>
+                                    </div>
+                                </div>
+
+                                <div style="background: rgba(16, 185, 129, 0.06); border: 1px dashed rgba(16, 185, 129, 0.25); padding: 12px 14px; border-radius: 12px; margin-bottom: 24px; text-align: left;">
+                                    <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+                                        <div style="margin-bottom: 6px;">
+                                            <i class="ph ph-note" style="vertical-align: -2px; margin-right: 4px;"></i>
+                                            更新内容请前往
+                                            <a href="https://guyi-access-wed.pages.dev/" target="_blank" rel="noopener" style="color: var(--color-primary); font-weight: 600; text-decoration: none;">官网查看</a>
+                                        </div>
+                                        <div>
+                                            <i class="ph ph-warning-circle" style="vertical-align: -2px; margin-right: 4px;"></i>
+                                            更新包走 GitHub 线路，若下载失败请挂<strong style="color:var(--text-primary);">香港节点</strong>后再试
+                                        </div>
                                     </div>
                                 </div>
 
@@ -262,6 +275,18 @@
     
     window.addEventListener('popstate', () => loadTab(window.location.href));
 </script>
-<style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+<style>
+@keyframes spin { 100% { transform: rotate(360deg); } }
+@keyframes sysUpdateFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes sysUpdateJelly {
+    0%   { opacity: 0; transform: scale(0.72) translateY(18px); }
+    55%  { opacity: 1; transform: scale(1.045) translateY(-4px); }
+    78%  { transform: scale(0.98) translateY(1px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+</style>
 </body>
 </html>

@@ -5,7 +5,7 @@ $step = isset($_GET['step']) ? intval($_GET['step']) : 1;
 $msg = '';
 
 $is_mobile = preg_match("/(android|avantgo|blackberry|bolt|boost|cricket|docomo|fone|hiptop|mini|mobi|palm|phone|pie|samsung|scp|wap|windows ce;iemobile|xhtml\\+xml)/i", $_SERVER["HTTP_USER_AGENT"] ?? '');
-$video_url = $is_mobile ? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/wallpapermodCloud_4.mp4' : 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/wallpaperPCCloud_4.mp4';
+$video_url = $is_mobile ? 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/MobileWallpaper.mp4' : 'https://pub-f96a0dcbf19949a9a70e2d01b1808bd7.r2.dev/DesktopWallpaper.mp4';
 
 function check_env() {
     $r = [];
@@ -71,7 +71,13 @@ if ($step == 4 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                  . "error_reporting(0);\n"
                  . "ini_set('display_errors', 0);\n\n"
                  . "ini_set('session.gc_maxlifetime', 315360000);\n"
-                 . "session_set_cookie_params(315360000);\n\n"
+                 . "\$__secure = (!empty(\$_SERVER['HTTPS']) && \$_SERVER['HTTPS'] !== 'off') || (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') || (isset(\$_SERVER['SERVER_PORT']) && (int)\$_SERVER['SERVER_PORT'] === 443);\n"
+                 . "if (PHP_VERSION_ID >= 70300) {\n"
+                 . "    session_set_cookie_params(['lifetime' => 315360000, 'path' => '/', 'domain' => '', 'secure' => \$__secure, 'httponly' => true, 'samesite' => 'Lax']);\n"
+                 . "} else {\n"
+                 . "    session_set_cookie_params(315360000, '/', '', \$__secure, true);\n"
+                 . "}\n"
+                 . "unset(\$__secure);\n\n"
                  . "if (!defined('DB_INSTALLED_CHECK')) {\n"
                  . "    \$current_script = basename(\$_SERVER['SCRIPT_NAME']);\n"
                  . "    if (\$current_script !== 'install.php' && file_exists(__DIR__ . '/install.php')) {\n"
@@ -108,7 +114,7 @@ if ($step == 4 && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 if (empty($avatar_val)) { $avatar_val = trim($_POST['admin_avatar_url'] ?? ''); }
-                if (empty($avatar_val)) { $avatar_val = 'https://q1.qlogo.cn/g?b=qq&nk=156440000&s=640'; }
+                if (empty($avatar_val)) { $avatar_val = 'https://pub-8a73d0f678a64dc9abb02ea54e4c44c5.r2.dev/logo.png'; }
 
                 require_once dirname(__DIR__) . '/config/config.php';
                 require_once dirname(__DIR__) . '/app/Infrastructure/Database/Database.php';
@@ -136,7 +142,8 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>系统部署与安装</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/vendor/phosphor/regular/style.css">
+    <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css">
     <style>
         :root {
             var(--glass-bg): rgba(255, 255, 255, 0.02);
@@ -305,7 +312,9 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
             .glass-card { padding: 30px 20px; width: 92%; border-radius: 24px; }
             .input-row { flex-direction: column; gap: 14px; }
         }
-    </style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+.ph-spinner-gap { display:inline-block; animation: spin 1s linear infinite; }
+</style>
 </head>
 <body>
 
@@ -324,7 +333,7 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
     </header>
 
     <?php if($msg): ?>
-        <div class="alert"><i class="fas fa-circle-exclamation"></i> <?php echo $msg; ?></div>
+        <div class="alert"><i class="ph-fill ph-warning-circle"></i> <?php echo $msg; ?></div>
     <?php endif; ?>
 
     <?php if($step == 1): ?>
@@ -337,7 +346,7 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
             <div class="env-item">
                 <span class="env-name"><?php echo $it['name']; ?></span>
                 <span class="env-status <?php echo $it['ok']?'status-ok':'status-no'; ?>">
-                    <?php echo $it['ok'] ? '通过 <i class="fas fa-check"></i>' : '异常 <i class="fas fa-times"></i>'; ?>
+                    <?php echo $it['ok'] ? '通过 <i class="ph-fill ph-check-circle"></i>' : '异常 <i class="ph ph-x"></i>'; ?>
                 </span>
             </div>
             <?php endforeach; ?>
@@ -370,7 +379,7 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
                 </div>
                 <div class="form-group">
                     <input type="password" name="db_pass" class="has-eye" placeholder="数据库密码">
-                    <i class="fas fa-eye-slash toggle-password"></i>
+                    <i class="ph ph-eye-slash toggle-password"></i>
                 </div>
             </div>
 
@@ -396,11 +405,11 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
             
             <div class="form-group">
                 <input type="password" id="a_pwd1" name="admin_password" class="has-eye" placeholder="设置管理员密码 (至少 6 位)" minlength="6" required>
-                <i class="fas fa-eye-slash toggle-password"></i>
+                <i class="ph ph-eye-slash toggle-password"></i>
             </div>
             <div class="form-group">
                 <input type="password" id="a_pwd2" name="admin_password_confirm" class="has-eye" placeholder="再次确认管理员密码" minlength="6" required>
-                <i class="fas fa-eye-slash toggle-password"></i>
+                <i class="ph ph-eye-slash toggle-password"></i>
             </div>
 
             <div class="form-group" style="background: rgba(255,255,255,0.03); padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); margin-top: 16px;">
@@ -423,21 +432,21 @@ $env_ok = !in_array(false, array_column($env, 'ok'));
 
             <button type="submit" class="btn">完成安装</button>
             <button type="button" class="btn btn-alt skip-btn" onclick="skipAdminSetup(event)">
-                <i class="fas fa-bolt"></i> 一键跳过 (自动生成并下载账密)
+                <i class="ph-fill ph-lightning"></i> 一键跳过 (自动生成并下载账密)
             </button>
         </form>
 
     <?php elseif($step == 4): ?>
         <!-- =================== 第四页：安装成功 =================== -->
-        <div class="success-icon"><i class="fas fa-check"></i></div>
+        <div class="success-icon"><i class="ph-fill ph-check-circle"></i></div>
         <h1>安装完成</h1>
         <p class="subtitle">系统已成功部署并就绪</p>
         
         <div class="credential-box">
-            <p><i class="fas fa-user"></i> 管理员账号：<code><?php echo htmlspecialchars($_POST['admin_username'] ?? ''); ?></code></p>
-            <p><i class="fas fa-lock"></i> 登录密码：<code>********</code> (您刚刚设置或生成的密码)</p>
+            <p><i class="ph ph-user"></i> 管理员账号：<code><?php echo htmlspecialchars($_POST['admin_username'] ?? ''); ?></code></p>
+            <p><i class="ph ph-lock"></i> 登录密码：<code>********</code> (您刚刚设置或生成的密码)</p>
             <p style="margin-top: 12px; font-size: 11px; opacity: 0.5; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-                <i class="fas fa-shield-halved"></i> 安全提示：安装文件 install.php 已自动销毁。
+                <i class="ph-fill ph-shield-check"></i> 安全提示：安装文件 install.php 已自动销毁。
             </p>
         </div>
 
@@ -452,9 +461,9 @@ document.addEventListener('DOMContentLoaded', function() {
         icon.addEventListener('click', function() {
             const input = this.previousElementSibling;
             if (input.type === 'password') {
-                input.type = 'text'; this.classList.replace('fa-eye-slash', 'fa-eye');
+                input.type = 'text'; this.classList.replace('ph-eye-slash', 'ph-eye');
             } else {
-                input.type = 'password'; this.classList.replace('fa-eye', 'fa-eye-slash');
+                input.type = 'password'; this.classList.replace('ph-eye', 'ph-eye-slash');
             }
         });
     });
@@ -468,7 +477,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 将提交按钮变为 Loading 状态
                 const btn = this.querySelector('button[type="submit"]');
-                if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+                if (btn) btn.innerHTML = '<i class="ph ph-spinner-gap"></i> 处理中...';
                 
                 document.getElementById('main_card').classList.add('leave');
                 setTimeout(() => this.submit(), 350);
@@ -515,7 +524,7 @@ function skipAdminSetup(e) {
     // 触发丝滑提交流程
     const form = document.getElementById('admin_form');
     form.dataset.submitting = 'true';
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在配置并跳转...';
+    btn.innerHTML = '<i class="ph ph-spinner-gap"></i> 正在配置并跳转...';
     document.getElementById('main_card').classList.add('leave');
     
     setTimeout(() => { form.submit(); }, 400);
